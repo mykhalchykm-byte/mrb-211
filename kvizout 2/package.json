@@ -1,0 +1,16 @@
+{
+  "name": "kvizout",
+  "version": "1.0.0",
+  "description": "Вікторина в стилі Kahoot: викладач показує питання на головному екрані, учні відповідають з телефонів",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "test": "node test.js"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "ws": "^8.18.0"
+  }
+}
