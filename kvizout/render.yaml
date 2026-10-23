@@ -1,0 +1,11 @@
+services:
+  - type: web
+    name: kvizout
+    runtime: node
+    plan: free
+    buildCommand: npm install
+    startCommand: npm start
+    healthCheckPath: /
+    envVars:
+      - key: TEACHER_CODE
+        sync: false   # Render попросить ввести код вчителя під час створення сервісу
