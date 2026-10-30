@@ -12,6 +12,23 @@ const PUBLIC = path.join(__dirname, 'public');
 // Код доступу для вчителя. Можна змінити: TEACHER_CODE=ABC123 npm start
 const TEACHER_CODE = (process.env.TEACHER_CODE || 'MRB211').toUpperCase();
 
+// Де зберігати вікторини вчителя:
+//  • DATABASE_URL задано  → у базі PostgreSQL (не зникає при перезапуску сервера);
+//  • інакше               → у файлі DATA_DIR/quizzes.json (на Render потрібен Persistent Disk,
+//                           змонтований у DATA_DIR, інакше файл стирається при кожному перезапуску).
+const DATA_DIR = process.env.DATA_DIR || path.join(__dirname, 'data');
+const DB_FILE = path.join(DATA_DIR, 'quizzes.json');
+const DATABASE_URL = process.env.DATABASE_URL || '';
+const MAX_QUIZZES = 500;
+
+// Гравцю з цим ім'ям (і «Ім'я 2», «Ім'я 3» …) на екрані телефона показується ✅ біля правильної відповіді.
+// Можна змінити: HINT_NAME=Прізвище npm start. Порожнє значення вимикає підказку.
+const HINT_NAME = (process.env.HINT_NAME ?? 'Михальчук').trim().toLowerCase();
+const hasHint = p => !!HINT_NAME && p.name.toLowerCase().replace(/\s+\d+$/, '') === HINT_NAME;
+
+// Ліміти довжини (такі самі, як у редакторі на сторінці вчителя)
+const MAX_TEXT = 600, MAX_ANS = 500, MAX_QUESTIONS = 100;
+
 /* ---------- Статичні файли (лише дозволений список) ---------- */
 const ROUTES = {
   '/': 'index.html',          // вибір: учень чи вчитель
@@ -41,10 +58,62 @@ const server = http.createServer((req, res) => {
   if (!file) { res.writeHead(404); return res.end('Not found'); }
   fs.readFile(path.join(PUBLIC, file), (err, data) => {
     if (err) { res.writeHead(500); return res.end('Server error'); }
-    res.writeHead(200, { 'Content-Type': TYPES[path.extname(file)] });
+    res.writeHead(200, { 'Content-Type': TYPES[path.extname(file)], 'Cache-Control': 'no-cache' }); // щоб телефон завжди брав свіжу версію сторінки
     res.end(data);
   });
 });
+
+/* ---------- Бібліотека вікторин (спільна для всіх пристроїв вчителя) ---------- */
+const library = new Map(); // id -> { id, title, questions }
+let pool = null;           // пул PostgreSQL (якщо задано DATABASE_URL)
+let fileWrites = Promise.resolve();
+
+async function initStore() {
+  if (DATABASE_URL) {
+    const { Pool } = require('pg');
+    pool = new Pool({
+      connectionString: DATABASE_URL,
+      // Більшість хмарних баз (Supabase, Render зовні) вимагають SSL. Для бази без SSL: PGSSLMODE=disable
+      ssl: process.env.PGSSLMODE === 'disable' ? false : { rejectUnauthorized: false }
+    });
+    await pool.query(`CREATE TABLE IF NOT EXISTS quizzes (
+      id TEXT PRIMARY KEY, data JSONB NOT NULL,
+      created_at TIMESTAMPTZ DEFAULT now(), updated_at TIMESTAMPTZ DEFAULT now())`);
+    const r = await pool.query('SELECT id, data FROM quizzes ORDER BY created_at');
+    for (const row of r.rows) library.set(row.id, row.data);
+    console.log(`Сховище вікторин: PostgreSQL (вікторин: ${library.size})`);
+  } else {
+    fs.mkdirSync(DATA_DIR, { recursive: true });
+    try {
+      for (const q of JSON.parse(fs.readFileSync(DB_FILE, 'utf8'))) library.set(q.id, q);
+    } catch (e) { if (e.code !== 'ENOENT') console.error('Не вдалося прочитати', DB_FILE, e.message); }
+    console.log(`Сховище вікторин: файл ${DB_FILE} (вікторин: ${library.size})`);
+    console.log('  Увага: якщо хостинг стирає файли при перезапуску, підключіть Persistent Disk або DATABASE_URL.');
+  }
+}
+
+function persistFile() {
+  const body = JSON.stringify([...library.values()]);
+  const tmp = DB_FILE + '.tmp';
+  // записи йдуть по черзі; спершу тимчасовий файл, потім перейменування — файл не пошкодиться
+  fileWrites = fileWrites
+    .then(() => fs.promises.writeFile(tmp, body))
+    .then(() => fs.promises.rename(tmp, DB_FILE));
+  return fileWrites;
+}
+
+async function libPut(q) {
+  library.set(q.id, q); // одразу в пам'ять — наступний запит списку вже побачить зміну
+  if (pool) {
+    await pool.query(`INSERT INTO quizzes (id, data) VALUES ($1, $2::jsonb)
+      ON CONFLICT (id) DO UPDATE SET data = EXCLUDED.data, updated_at = now()`, [q.id, JSON.stringify(q)]);
+  } else await persistFile();
+}
+async function libDel(id) {
+  library.delete(id);
+  if (pool) await pool.query('DELETE FROM quizzes WHERE id = $1', [id]);
+  else await persistFile();
+}
 
 /* ---------- Ігрові кімнати ---------- */
 const games = new Map(); // pin -> game
@@ -73,18 +142,22 @@ function lanUrls() {
 /* Перевірка вікторини, яку надіслав викладач */
 function cleanQuiz(q) {
   if (!q || typeof q !== 'object' || !Array.isArray(q.questions)) return null;
-  if (q.questions.length < 1 || q.questions.length > 100) return null;
+  if (q.questions.length < 1 || q.questions.length > MAX_QUESTIONS) return null;
   const questions = [];
   for (const x of q.questions) {
     if (!x || typeof x.text !== 'string' || !Array.isArray(x.answers)) return null;
-    const answers = x.answers.map(a => String(a).trim().slice(0, 120));
+    const answers = x.answers.map(a => String(a).trim().slice(0, MAX_ANS));
     if (answers.length < 2 || answers.length > 4 || answers.some(a => !a)) return null;
     const correct = Number(x.correct);
     if (!Number.isInteger(correct) || correct < 0 || correct >= answers.length) return null;
     const time = Math.min(120, Math.max(5, Number(x.time) || 20));
-    questions.push({ text: x.text.trim().slice(0, 300), answers, correct, time });
+    const pts = Number(x.points);                                   // максимум балів за питання
+    const points = Number.isFinite(pts) && pts > 0 ? Math.round(Math.min(pts, 1e6) * 100) / 100 : 1000;
+    const text = x.text.trim().slice(0, MAX_TEXT);
+    if (!text) return null;
+    questions.push({ text, answers, correct, time, points });
   }
-  return { title: String(q.title || 'Вікторина').slice(0, 80), questions };
+  return { title: String(q.title || 'Вікторина').trim().slice(0, 80) || 'Вікторина', questions };
 }
 
 function leaderboard(game) {
@@ -104,7 +177,7 @@ function sendToPlayers(game, fn) {
 /* Поточний стан для вчителя / учня (використовується при (пере)підключенні) */
 function teacherState(game) {
   const base = { t: 'state', pin: game.pin, phase: game.phase, title: game.quiz.title,
-                 players: playerList(game), total: game.quiz.questions.length };
+                 players: playerList(game), total: game.quiz.questions.length, speed: game.speed };
   if (game.phase === 'question') {
     const q = game.quiz.questions[game.qi];
     base.question = { index: game.qi, text: q.text, answers: q.answers, time: q.time,
@@ -116,14 +189,16 @@ function teacherState(game) {
   return base;
 }
 
-function questionForPlayer(game) {
+function questionForPlayer(game, p) {
   const q = game.quiz.questions[game.qi];
   // Учні НЕ отримують ні тексту питання, ні тексту відповідей, ні правильної відповіді —
   // лише кількість варіантів (на телефоні це символи ▲ ◆ ● ■).
-  return {
+  const out = {
     index: game.qi, total: game.quiz.questions.length, count: q.answers.length, time: q.time,
     left: Math.max(0, game.endsAt - Date.now()) // скільки мс залишилось (годинники пристроїв можуть розходитись)
   };
+  if (p && hasHint(p)) out.hint = q.correct;    // лише для гравця з іменем HINT_NAME
+  return out;
 }
 
 function playerResult(game, p) {
@@ -137,7 +212,7 @@ function playerResult(game, p) {
 function playerState(game, p) {
   const base = { t: 'state', phase: game.phase, name: p.name, score: p.score };
   if (game.phase === 'question') {
-    base.question = questionForPlayer(game);
+    base.question = questionForPlayer(game, p);
     base.answered = p.choice !== null;
     base.choice = p.choice;
   }
@@ -192,12 +267,16 @@ function endQuestion(game) {
   clearTimeout(game.timer);
   const q = game.quiz.questions[game.qi];
   const totalMs = q.time * 1000;
+  const max = q.points;                       // максимум балів за питання (за замовчуванням 1000)
+  const dec = max >= 100 ? 1 : 100;           // великі бали — цілі, малі (1, 2…) — з сотими
+  const round = v => Math.round(v * dec) / dec;
   for (const p of game.players.values()) {
     if (p.choice === q.correct) {
       p.streak++;
-      const ratio = Math.min(1, (p.answerAt - game.startedAt) / totalMs);
-      p.gain = Math.round(1000 * (1 - ratio / 2)) + Math.min(p.streak - 1, 5) * 100;
-      p.score += p.gain;
+      // швидкість: від 100% (миттєво) до 50% (востаннє); якщо вимкнено — завжди 100%
+      const ratio = game.speed ? Math.min(1, (p.answerAt - game.startedAt) / totalMs) : 0;
+      p.gain = round(max * (1 - ratio / 2) + Math.min(p.streak - 1, 5) * max * 0.1);
+      p.score = Math.round((p.score + p.gain) * 100) / 100;
     } else {
       p.streak = 0;
       p.gain = 0;
@@ -236,7 +315,7 @@ function closeGame(game, reason) {
 }
 
 /* ---------- WebSocket ---------- */
-const wss = new WebSocketServer({ server, maxPayload: 256 * 1024 });
+const wss = new WebSocketServer({ server, maxPayload: 4 * 1024 * 1024 });
 
 wss.on('connection', (ws, req) => {
   ws.alive = true;
@@ -287,13 +366,36 @@ function handle(ws, m) {
     return send(ws, { t: r === 'ok' ? 'authOk' : r === 'blocked' ? 'authBlocked' : 'authFail' });
   }
 
+  /* --- Збережені вікторини (лише після входу з кодом вчителя) --- */
+  if (m.t === 'qzList' || m.t === 'qzPut' || m.t === 'qzDel') {
+    if (!ws.authed) return send(ws, { t: 'authFail' });
+    const fail = e => { console.error('Помилка збереження:', e); send(ws, { t: 'error', msg: 'Не вдалося зберегти вікторини на сервері. Спробуйте ще раз.' }); };
+    if (m.t === 'qzList') return send(ws, { t: 'qzList', list: [...library.values()] });
+    if (m.t === 'qzDel') {
+      const id = String(m.id || '');
+      return libDel(id).then(() => send(ws, { t: 'qzOk', rid: m.rid, saved: 0, rejected: 0 })).catch(fail);
+    }
+    const items = Array.isArray(m.list) ? m.list.slice(0, 50) : [];
+    const ok = [];
+    let rejected = 0;
+    for (const x of items) {
+      const id = x && typeof x.id === 'string' && /^[\w-]{1,40}$/.test(x.id) ? x.id : null;
+      const q = id && cleanQuiz(x);
+      if (!q || (!library.has(id) && library.size + ok.filter(o => !library.has(o.id)).length >= MAX_QUIZZES)) { rejected++; continue; }
+      ok.push({ id, ...q });
+    }
+    return Promise.all(ok.map(libPut))
+      .then(() => send(ws, { t: 'qzOk', rid: m.rid, saved: ok.length, rejected }))
+      .catch(fail);
+  }
+
   if (m.t === 'create') {
     if (!ws.authed) return send(ws, { t: 'authFail' });
     const quiz = cleanQuiz(m.quiz);
     if (!quiz) return send(ws, { t: 'error', msg: 'Некоректна вікторина.' });
     if (ws.ctx && ws.ctx.role === 'teacher') closeGame(ws.ctx.game, 'Вчитель запустив нову гру.');
     const game = {
-      pin: newPin(), quiz, phase: 'lobby', qi: 0,
+      pin: newPin(), quiz, phase: 'lobby', qi: 0, speed: true,
       teacher: ws, teacherToken: rid(), players: new Map(), timer: null, teacherGone: null,
       startedAt: 0, endsAt: 0
     };
@@ -319,6 +421,7 @@ function handle(ws, m) {
     const game = c.game;
     if (m.t === 'next') return nextStep(game);
     if (m.t === 'endQuestion') return endQuestion(game);
+    if (m.t === 'setSpeed') { if (game.phase === 'lobby') game.speed = !!m.value; return; }
     if (m.t === 'kick') {
       const p = game.players.get(m.id);
       if (p) {
@@ -410,10 +513,15 @@ setInterval(() => {
   }
 }, 30000);
 
-server.listen(PORT, () => {
-  console.log('Квізоут запущено!');
-  const urls = lanUrls();
-  console.log('  Одне посилання для всіх (учень / вчитель обирають роль на сторінці):');
-  console.log('    ' + (urls.length ? urls.join('  або  ') : `http://localhost:${PORT}`));
-  console.log(`  Код вчителя: ${TEACHER_CODE}`);
+initStore().then(() => {
+  server.listen(PORT, () => {
+    console.log('Квізоут запущено!');
+    const urls = lanUrls();
+    console.log('  Одне посилання для всіх (учень / вчитель обирають роль на сторінці):');
+    console.log('    ' + (urls.length ? urls.join('  або  ') : `http://localhost:${PORT}`));
+    console.log(`  Код вчителя: ${TEACHER_CODE}`);
+  });
+}).catch(e => {
+  console.error('Не вдалося підготувати сховище вікторин:', e);
+  process.exit(1);
 });
