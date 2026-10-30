@@ -14,6 +14,19 @@
   .quiz-item button{padding:8px 12px}
   .c0{color:var(--red)} .c1{color:var(--blue)} .c2{color:var(--yellow)} .c3{color:var(--green)}
 
+  /* повідомлення про імпорт і підказка */
+  .note{padding:10px 14px;border-radius:8px;margin-top:12px;line-height:1.4}
+  .note.ok{background:#e6f4e1;color:#1d5c0a}
+  .note.err{background:#fde8e8;color:#8a1111}
+  .help{margin-top:12px;background:#f4f0fb;border-radius:8px;padding:10px 14px}
+  .help summary{cursor:pointer;font-weight:700}
+  .help p,.help ul{margin-top:8px}
+  .help ul{margin-left:20px}
+  .help li{margin:4px 0}
+  .demo{border-collapse:collapse;margin-top:8px;font-size:.9rem;display:block;overflow-x:auto}
+  .demo th,.demo td{border:1px solid #b9aedb;padding:4px 8px;white-space:nowrap}
+  .demo th{background:#e3dcf2}
+
   /* редактор */
   .q-edit{border:2px solid #e3dcf2;border-radius:10px;padding:14px;margin-bottom:12px}
   .ans-edit{display:flex;gap:8px;align-items:center}
@@ -73,11 +86,32 @@
       <div class="row" style="justify-content:space-between">
         <h2 style="margin:0">Мої вікторини</h2>
         <div class="row">
-          <button class="gray" onclick="$('importFile').click()">⬆ Імпорт</button>
+          <button class="gray" onclick="$('importFile').click()">⬆ Імпорт (Excel / Word / JSON)</button>
           <button class="green" onclick="newQuiz()">+ Створити вікторину</button>
-          <input type="file" id="importFile" accept=".json,application/json" style="display:none" onchange="importQuiz(this)">
+          <input type="file" id="importFile" accept=".xlsx,.docx,.json,application/json,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.openxmlformats-officedocument.wordprocessingml.document" style="display:none" onchange="importQuiz(this)">
         </div>
       </div>
+      <div id="importMsg" class="note" style="display:none"></div>
+      <details class="help">
+        <summary>📄 Як імпортувати вікторини з Excel (.xlsx) або Word (.docx)</summary>
+        <p><b>Excel:</b> кожен аркуш — окрема вікторина (назва аркуша = назва вікторини). У колонках: 1 — питання,
+           2–5 — варіанти відповідей, 6 — правильна відповідь (текст, номер 1–4 або літера), 7 — максимальна кількість балів за питання.
+           Рядок із заголовками необов'язковий. Порожні рядки пропускаються.</p>
+        <p><b>Word:</b></p>
+        <p>Підготуйте в Word <b>таблицю</b>: перший рядок — заголовки, далі по одному питанню в рядку.</p>
+        <table class="demo">
+          <tr><th>№</th><th>Питання</th><th>Відповідь 1</th><th>Відповідь 2</th><th>Відповідь 3</th><th>Відповідь 4</th><th>Правильна</th><th>Час</th></tr>
+          <tr><td>1</td><td>Столиця України?</td><td>Львів</td><td>Київ</td><td>Одеса</td><td>Харків</td><td>2</td><td>15</td></tr>
+          <tr><td>2</td><td>7 × 8 = 56?</td><td>Так</td><td>Ні</td><td></td><td></td><td>А</td><td></td></tr>
+        </table>
+        <ul>
+          <li><b>Правильна</b> — номер варіанта (1–4), літера (А–Г або A–D) або сам текст правильної відповіді.
+              Замість цієї колонки можна виділити правильний варіант <b>жирним</b>, кольором чи заливкою або поставити перед ним «*».</li>
+          <li>Варіантів від 2 до 4, порожні клітинки пропускаються. Колонки «№» і «Час» необов'язкові; час — у секундах (5–120), за замовчуванням 20.</li>
+          <li>Назва вікторини — перший рядок тексту перед таблицею (якщо його немає, береться назва файлу).</li>
+          <li>Після імпорту вікторину можна переглянути й виправити кнопкою ✎.</li>
+        </ul>
+      </details>
       <div id="quizList" class="grid" style="margin-top:14px"></div>
     </div>
   </section>
@@ -109,6 +143,10 @@
       </div>
       <div class="chips" id="plList"></div>
       <p class="muted" style="color:#555;margin:0 0 14px">На телефонах учнів з'являться лише символи ▲ ◆ ● ■ — питання та варіанти відповідей видно тільки на цьому екрані.</p>
+      <label class="row" style="margin:0 0 14px;color:#222">
+        <input type="checkbox" id="speedChk" checked style="width:auto" onchange="send({t:'setSpeed', value:this.checked})">
+        <span>Бали залежать від швидкості: максимум — за миттєву відповідь, до 50% — за найповільнішу (вимкніть, щоб за кожну правильну відповідь давати повні бали)</span>
+      </label>
       <div class="row">
         <button class="green" id="startBtn" onclick="send({t:'next'})">▶ Почати гру</button>
         <button class="gray" onclick="endGame()">Скасувати</button>
@@ -220,7 +258,8 @@ function normalizeQuiz(q){
     if (answers.length < 2 || answers.length > 4 || answers.some(a => !a)) return null;
     const correct = Number(x.correct);
     if (!Number.isInteger(correct) || correct < 0 || correct >= answers.length) return null;
-    questions.push({ text: x.text.trim(), answers, correct, time: Math.min(120, Math.max(5, Number(x.time) || 20)) });
+    questions.push({ text: x.text.trim(), answers, correct, time: Math.min(120, Math.max(5, Number(x.time) || 20)),
+                     points: parsePoints(x.points) ?? 1000 });
   }
   return { id: 'q' + Date.now() + Math.floor(Math.random()*1000), title: q.title.trim().slice(0, 80) || 'Вікторина', questions };
 }
@@ -236,6 +275,8 @@ function exportQuiz(id){
 function importQuiz(input){
   const f = input.files[0]; input.value = '';
   if (!f) return;
+  if (/\.docx$/i.test(f.name)) return importDocx(f);
+  if (/\.doc$/i.test(f.name)) return notify('Старий формат .doc не підтримується. У Word відкрийте файл і виберіть «Файл → Зберегти як → Документ Word (.docx)», потім імпортуйте його.', 'err');
   const r = new FileReader();
   r.onload = () => {
     try {
@@ -249,8 +290,267 @@ function importQuiz(input){
   r.readAsText(f);
 }
 
+/* ================= ІМПОРТ З WORD (.docx) ================= */
+const W_NS = 'http://schemas.openxmlformats.org/wordprocessingml/2006/main';
+
+function notify(html, kind){
+  const el = $('importMsg');
+  el.className = 'note ' + (kind || 'ok');
+  el.innerHTML = html;
+  el.style.display = 'block';
+}
+const bullets = list => '<ul style="margin:6px 0 0 20px">' + list.slice(0, 10).map(x => '<li>' + esc(x) + '</li>').join('')
+  + (list.length > 10 ? `<li>… і ще ${list.length - 10}</li>` : '') + '</ul>';
+
+/* .docx — це ZIP. Читаємо його без бібліотек: знаходимо файл у центральному каталозі й розпаковуємо. */
+async function readZipEntry(buf, wanted){
+  const dv = new DataView(buf), u8 = new Uint8Array(buf);
+  let eocd = -1;
+  for (let i = u8.length - 22; i >= Math.max(0, u8.length - 22 - 65535); i--) {
+    if (dv.getUint32(i, true) === 0x06054b50) { eocd = i; break; }
+  }
+  if (eocd < 0) throw new Error('not-zip');
+  const count = dv.getUint16(eocd + 10, true);
+  let p = dv.getUint32(eocd + 16, true);
+  for (let n = 0; n < count; n++) {
+    if (p + 46 > u8.length || dv.getUint32(p, true) !== 0x02014b50) break;
+    const method = dv.getUint16(p + 10, true), csize = dv.getUint32(p + 20, true);
+    const nameLen = dv.getUint16(p + 28, true), extraLen = dv.getUint16(p + 30, true), cmtLen = dv.getUint16(p + 32, true);
+    const lho = dv.getUint32(p + 42, true);
+    const name = new TextDecoder().decode(u8.subarray(p + 46, p + 46 + nameLen));
+    if (name === wanted) {
+      const start = lho + 30 + dv.getUint16(lho + 26, true) + dv.getUint16(lho + 28, true);
+      const data = u8.subarray(start, start + csize);
+      if (method === 0) return data;
+      if (method === 8) {
+        const stream = new Blob([data]).stream().pipeThrough(new DecompressionStream('deflate-raw'));
+        return new Uint8Array(await new Response(stream).arrayBuffer());
+      }
+      throw new Error('not-zip');
+    }
+    p += 46 + nameLen + extraLen + cmtLen;
+  }
+  return null;
+}
+
+/* --- допоміжні функції для XML Word --- */
+const wEl = (node, name) => node ? [...node.childNodes].filter(n => n.nodeType === 1 && n.namespaceURI === W_NS && n.localName === name) : [];
+const clean = s => String(s || '').replace(/\s+/g, ' ').trim();
+
+function runText(node){
+  let s = '';
+  for (const c of node.childNodes) {
+    if (c.nodeType !== 1) continue;
+    const n = c.localName;
+    if (n === 't') s += c.textContent;
+    else if (n === 'tab' || n === 'br' || n === 'cr') s += ' ';
+    else if (n === 'noBreakHyphen') s += '-';
+    else if (['delText', 'instrText', 'rPr', 'pPr', 'tbl', 'Fallback'].includes(n)) continue;
+    else s += runText(c);
+  }
+  return s;
+}
+
+// Чи виділено клітинку: жирний шрифт у всьому тексті, маркер кольором, або заливка клітинки.
+function cellMarked(tc){
+  const isFill = f => f && !['auto', 'ffffff', 'ffffffff'].includes(f.toLowerCase());
+  const shd = wEl(wEl(tc, 'tcPr')[0], 'shd')[0];
+  if (shd && isFill(shd.getAttributeNS(W_NS, 'fill'))) return true;
+  let runs = 0, bold = 0, mark = false;
+  for (const r of tc.getElementsByTagNameNS(W_NS, 'r')) {
+    if (!runText(r).trim()) continue;
+    runs++;
+    const rPr = wEl(r, 'rPr')[0];
+    if (!rPr) continue;
+    const b = wEl(rPr, 'b')[0];
+    if (b && !['0', 'false', 'off'].includes(b.getAttributeNS(W_NS, 'val'))) bold++;
+    const h = wEl(rPr, 'highlight')[0];
+    if (h && h.getAttributeNS(W_NS, 'val') !== 'none') mark = true;
+    const s = wEl(rPr, 'shd')[0];
+    if (s && isFill(s.getAttributeNS(W_NS, 'fill'))) mark = true;
+  }
+  return mark || (runs > 0 && bold === runs);
+}
+
+// Що означає заголовок колонки
+function headerKind(txt){
+  const raw = clean(txt);
+  if (/^[№#]$/.test(raw)) return 'num';
+  const t = raw.toLowerCase().replace(/[.:№#()\-_,]/g, ' ').replace(/\s+/g, ' ').trim();
+  if (!t || t.length > 36) return null;
+  if (/правил|вірн|верн|correct|ключ|\bkey\b/.test(t)) return 'correct';
+  if (/час|time|сек|тривал/.test(t)) return 'time';
+  if (/бал|оцін|очк|point|score|макс/.test(t)) return 'points';
+  if (/питан|запитан|question|завдан/.test(t)) return 'q';
+  if (/відпов|варіант|answer|option|^[a-dа-г]$|^[1-4]$/.test(t)) return 'a';
+  if (/^(n|no|номер|id|п\/п|п п)$/.test(t)) return 'num';
+  return null;
+}
+
+// Яка відповідь правильна: номер, літера, текст. null — клітинка порожня, -1 — не вдалося визначити.
+function resolveCorrect(raw, ans){
+  const c = clean(raw);
+  if (!c) return null;
+  const norm = t => t.toLowerCase().replace(/^[\s("«'“]+|[\s.,;:!?)"»'”]+$/g, '').replace(/\s+/g, ' ');
+  const byText = ans.findIndex(a => norm(a.text) === norm(c));
+  if (byText >= 0 && c.length > 2) return byText;            // довгий текст збігся з варіантом
+  let s = c.toLowerCase().replace(/^((правильна|вірна|відповідь|варіант|answer|option|correct)\s*[:№#\-–]*\s*)+/, '')
+           .replace(/^\(/, '').replace(/[).\s]+$/, '').trim();
+  const lead = s.match(/^([a-dа-г1-4])\s*[).]\s*\S/);          // «Б) Київ»
+  if (lead) s = lead[1];
+  let pos = null;
+  if (/^[1-4]$/.test(s)) pos = +s - 1;
+  else if (/^[a-d]$/.test(s)) pos = 'abcd'.indexOf(s);
+  else if (/^[а-г]$/.test(s)) pos = 'абвг'.indexOf(s);
+  if (pos !== null) { const i = ans.findIndex(a => a.pos === pos); if (i >= 0) return i; }
+  return byText;
+}
+
+function parseTime(raw){
+  const c = clean(raw).toLowerCase();
+  if (!c) return 20;
+  let v;
+  const mm = c.match(/^(\d+)\s*:\s*(\d{1,2})$/);               // 1:30
+  if (mm) v = +mm[1] * 60 + +mm[2];
+  else {
+    const n = c.match(/(\d+(?:[.,]\d+)?)/);
+    if (!n) return 20;
+    v = parseFloat(n[1].replace(',', '.'));
+    if (/хв|min/.test(c)) v *= 60;
+  }
+  return Math.min(120, Math.max(5, Math.round(v)));
+}
+
+/* --- головна функція: з XML документа Word робить вікторину --- */
+function parseDocxQuiz(xmlText, fallbackTitle){
+  const dom = new DOMParser().parseFromString(xmlText, 'application/xml');
+  const body = dom.getElementsByTagNameNS(W_NS, 'body')[0];
+  if (dom.getElementsByTagName('parsererror').length || !body) throw new Error('bad-xml');
+
+  const questions = [], errors = [], warnings = [];
+  let title = '', tables = 0, headerMap = null, warnedCols = false;
+
+  for (const node of body.childNodes) {
+    if (node.nodeType !== 1 || node.namespaceURI !== W_NS) continue;
+    if (node.localName === 'p') { if (!tables && !title) title = clean(runText(node)); continue; }
+    if (node.localName !== 'tbl') continue;
+    tables++;
+    let defMap = null;
+
+    wEl(node, 'tr').forEach((tr, ri) => {
+      const where = (tables > 1 ? `таблиця ${tables}, ` : '') + `рядок ${ri + 1}`;
+      const cells = [];
+      for (const tc of wEl(tr, 'tc')) {
+        const gs = wEl(wEl(tc, 'tcPr')[0], 'gridSpan')[0];
+        const span = gs ? Math.max(1, parseInt(gs.getAttributeNS(W_NS, 'val'), 10) || 1) : 1;
+        cells.push({ text: wEl(tc, 'p').map(runText).join(' '), marked: cellMarked(tc) });
+        for (let k = 1; k < span; k++) cells.push({ text: '', marked: false });
+      }
+      if (cells.every(c => !c.text.trim())) return;
+
+      // рядок із заголовками колонок?
+      const kinds = cells.map(c => headerKind(c.text));
+      const filled = cells.filter(c => c.text.trim()).length;
+      const known = kinds.filter(Boolean).length;
+      if (kinds.includes('q') && kinds.filter(k => k === 'a').length >= 2 && (ri === 0 || known >= filled)) {
+        const m = { q: kinds.indexOf('q'), correct: kinds.indexOf('correct'), time: kinds.indexOf('time'), points: kinds.indexOf('points'), answers: [] };
+        kinds.forEach((k, i) => { if (k === 'a') m.answers.push(i); });
+        if (m.answers.length > 4 && !warnedCols) { warnings.push('Колонок із відповідями більше за 4 — використано перші чотири.'); warnedCols = true; }
+        headerMap = m; defMap = null;
+        return;
+      }
+
+      // колонки: за заголовком, а якщо його немає — стандартний порядок
+      let m = headerMap;
+      if (!m) {
+        if (!defMap) {
+          const off = /^\d+[.)]?$/.test(clean(cells[0].text)) ? 1 : 0;
+          defMap = { q: off, answers: [off + 1, off + 2, off + 3, off + 4], correct: off + 5, time: off + 6, points: -1 };
+        }
+        m = defMap;
+      }
+      const get = i => (i >= 0 && cells[i]) ? cells[i] : { text: '', marked: false };
+
+      const qText = clean(get(m.q).text);
+      const ans = m.answers.slice(0, 4).map((ci, pos) => {
+        let text = clean(get(ci).text), pref = false;
+        const pm = text.match(/^[*+✓✔]\s*(.*)$/);
+        if (pm) { pref = true; text = pm[1]; }
+        return { pos, text, pref, marked: get(ci).marked };
+      }).filter(a => a.text);
+
+      if (!qText && !ans.length) return;
+      if (!qText) return errors.push(`${where}: немає тексту питання`);
+      if (ans.length < 2) return errors.push(`${where}: потрібно щонайменше 2 варіанти відповіді`);
+
+      let idx = resolveCorrect(get(m.correct).text, ans);
+      if (idx === null) {                                        // колонки немає або вона порожня → шукаємо виділення
+        const pref = ans.filter(a => a.pref), fmt = ans.filter(a => a.marked);
+        if (pref.length === 1) idx = ans.indexOf(pref[0]);
+        else if (fmt.length === 1) idx = ans.indexOf(fmt[0]);
+        else return errors.push(`${where}: не вказано правильну відповідь`);
+      } else if (idx < 0) {
+        return errors.push(`${where}: правильна відповідь «${clean(get(m.correct).text).slice(0, 30)}» не збігається з жодним варіантом`);
+      }
+
+      if (qText.length > 300) warnings.push(`${where}: текст питання обрізано до 300 символів`);
+      if (ans.some(a => a.text.length > 120)) warnings.push(`${where}: довгі варіанти відповіді обрізано до 120 символів`);
+      questions.push({
+        text: qText.slice(0, 300),
+        answers: ans.map(a => a.text.slice(0, 120)),
+        correct: idx,
+        time: m.time >= 0 ? parseTime(get(m.time).text) : 20
+      });
+    });
+  }
+
+  if (!tables) throw new Error('no-table');
+  if (questions.length > 100) { questions.length = 100; warnings.push('Імпортовано лише перші 100 питань.'); }
+  const t = title && title.length <= 80 ? title : clean(fallbackTitle);
+  return { title: t || 'Вікторина з Word', questions, errors, warnings };
+}
+
+async function importDocx(f){
+  try {
+    if (typeof DecompressionStream === 'undefined') throw new Error('old-browser');
+    if (f.size > 20 * 1024 * 1024) throw new Error('too-big');
+    const xml = await readZipEntry(await f.arrayBuffer(), 'word/document.xml');
+    if (!xml) throw new Error('not-zip');
+    const res = parseDocxQuiz(new TextDecoder().decode(xml), f.name.replace(/\.docx$/i, ''));
+
+    if (!res.questions.length) {
+      return notify('<b>Не вдалося знайти жодного питання.</b>' + (res.errors.length ? bullets(res.errors) : '')
+        + '<div style="margin-top:6px">Перевірте таблицю: перший рядок — заголовки («Питання», «Відповідь 1» … «Правильна»). Приклад — у підказці вище.</div>', 'err');
+    }
+    if (res.errors.length) {
+      const list = res.errors.slice(0, 8).map(e => '• ' + e).join('\n') + (res.errors.length > 8 ? `\n… і ще ${res.errors.length - 8}` : '');
+      if (!confirm(`Знайдено питань: ${res.questions.length}. Пропущено рядків: ${res.errors.length}:\n\n${list}\n\nІмпортувати знайдені питання?`)) {
+        return notify('Імпорт скасовано.', 'err');
+      }
+    }
+    const quiz = normalizeQuiz({ title: res.title, questions: res.questions });
+    if (!quiz) throw new Error('invalid');
+    quizzes.push(quiz); persist(); renderLib();
+    let html = `✅ Імпортовано «${esc(quiz.title)}»: питань — <b>${quiz.questions.length}</b>.`;
+    if (res.errors.length) html += `<div>Пропущено рядків: ${res.errors.length}.</div>` + bullets(res.errors);
+    if (res.warnings.length) html += '<div>Зауваження:</div>' + bullets(res.warnings);
+    html += '<div style="margin-top:4px">Перегляньте вікторину кнопкою ✎ — за потреби виправте.</div>';
+    notify(html, 'ok');
+  } catch (e) {
+    const msg = {
+      'old-browser': 'Цей браузер застарів для читання Word-файлів. Оновіть його або скористайтеся імпортом .json.',
+      'too-big': 'Файл завеликий (понад 20 МБ).',
+      'not-zip': 'Файл не схожий на документ Word (.docx). Якщо файл захищено паролем, зніміть пароль і збережіть його ще раз.',
+      'bad-xml': 'Не вдалося прочитати вміст документа. Спробуйте відкрити його в Word і зберегти як .docx ще раз.',
+      'no-table': 'У документі не знайдено таблиці. Питання й відповіді мають бути в таблиці Word.',
+      'invalid': 'Не вдалося створити вікторину з цього файлу.'
+    }[e.message] || 'Не вдалося прочитати файл.';
+    notify(esc(msg), 'err');
+  }
+}
+
 /* ================= РЕДАКТОР ================= */
-const blankQuestion = () => ({text:'', answers:['','','',''], correct:0, time:20});
+const blankQuestion = () => ({text:'', answers:['','','',''], correct:0, time:20, points:1000});
 function newQuiz(){
   editing = {id:'q' + Date.now(), title:'', questions:[blankQuestion()]};
   renderEditor(); show('editor');
@@ -267,13 +567,13 @@ function renderEditor(){
         <b>Питання ${i + 1}</b>
         <button class="red" onclick="removeQuestion(${i})">Видалити</button>
       </div>
-      <input placeholder="Текст питання (його бачить лише головний екран)" maxlength="300" value="${esc(q.text)}"
+      <input placeholder="Текст питання (його бачить лише головний екран)" maxlength="600" value="${esc(q.text)}"
              oninput="editing.questions[${i}].text=this.value">
       ${q.answers.map((a, j) => `
         <label class="ans-edit">
           <input type="radio" name="c${i}" ${q.correct === j ? 'checked' : ''} onchange="editing.questions[${i}].correct=${j}" title="Правильна відповідь">
           <span class="shape c${j}">${SHAPES[j]}</span>
-          <input type="text" placeholder="Відповідь ${j + 1}" maxlength="120" value="${esc(a)}"
+          <input type="text" placeholder="Відповідь ${j + 1}" maxlength="500" value="${esc(a)}"
                  oninput="editing.questions[${i}].answers[${j}]=this.value">
           ${q.answers.length > 2 ? `<button class="gray" onclick="removeAnswer(${i},${j})" title="Прибрати варіант">✕</button>` : ''}
         </label>`).join('')}
@@ -282,6 +582,9 @@ function renderEditor(){
         <label>Час: <select style="width:auto" onchange="editing.questions[${i}].time=+this.value">
           ${[5,10,15,20,30,45,60,90,120].map(t => `<option value="${t}" ${q.time === t ? 'selected' : ''}>${t} с</option>`).join('')}
         </select></label>
+        <label title="Максимум балів за миттєву відповідь; за повільнішу — менше (якщо ввімкнено «за швидкість»)">Макс. балів:
+          <input type="number" min="0.01" step="any" style="width:110px" value="${q.points ?? 1000}"
+                 oninput="editing.questions[${i}].points=+this.value"></label>
         <small class="muted" style="color:#555">● біля відповіді — правильна</small>
       </div>
     </div>`).join('');
@@ -303,6 +606,8 @@ function saveQuiz(){
   if (!editing.title) return alert('Введіть назву вікторини.');
   const bad = editing.questions.findIndex(q => !q.text.trim() || q.answers.some(a => !a.trim()));
   if (bad >= 0) return alert(`Питання ${bad + 1}: заповніть текст питання та всі варіанти відповідей (або приберіть зайві).`);
+  const badP = editing.questions.findIndex(q => !(Number(q.points) > 0));
+  if (badP >= 0) return alert(`Питання ${badP + 1}: вкажіть максимальну кількість балів (число більше 0).`);
   const i = quizzes.findIndex(q => q.id === editing.id);
   if (i >= 0) quizzes[i] = editing; else quizzes.push(editing);
   persist(); show('lib');
@@ -372,6 +677,7 @@ function handle(m){
     $('joinUrl').innerHTML = joinUrls.map(u => `<b>${esc(u)}</b>`).join(' &nbsp;або&nbsp; ');
     $('hdrPin').textContent = 'PIN: ' + m.pin;
     $('lobbyTitle').textContent = gameTitle;
+    $('speedChk').checked = true;
     renderPlayers([]);
     show('lobby');
   }
@@ -389,6 +695,7 @@ function render(s){
     $('pinBig').textContent = s.pin.slice(0,3) + ' ' + s.pin.slice(3);
     $('joinUrl').innerHTML = joinUrls.map(u => `<b>${esc(u)}</b>`).join(' &nbsp;або&nbsp; ') || `<b>${esc(location.origin)}</b>`;
     $('lobbyTitle').textContent = s.title;
+    $('speedChk').checked = s.speed !== false;
     renderPlayers(s.players); show('lobby');
   }
   else if (s.phase === 'question') renderQuestion(s);
@@ -456,7 +763,7 @@ function renderFinal(lb){
 function downloadCSV(){
   // захист від «формул» в Excel: імена учнів — це довільний текст
   const cell = v => { let s = String(v); if (/^[=+\-@\t\r]/.test(s)) s = "'" + s; return '"' + s.replace(/"/g, '""') + '"'; };
-  const rows = [['Місце', "Ім'я", 'Бали'], ...finalBoard.map(p => [p.rank, p.name, p.score])];
+  const rows = [['Місце', "Ім'я", 'Бали'], ...finalBoard.map(p => [p.rank, p.name, String(p.score).replace('.', ',')])];  // десяткова кома — для українського Excel
   const csv = '﻿' + rows.map(r => r.map(cell).join(';')).join('\r\n');
   const a = document.createElement('a');
   a.href = URL.createObjectURL(new Blob([csv], {type:'text/csv;charset=utf-8'}));
