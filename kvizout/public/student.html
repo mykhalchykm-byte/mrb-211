@@ -181,7 +181,7 @@ function showQuestion(q){
     // На телефоні лише символ (текст відповідей видно на головному екрані)
     b.className = 'a' + i + ' only-shape';
     b.setAttribute('aria-label', SHAPE_NAMES[i]);
-    b.innerHTML = `<span class="shape">${SHAPES[i]}</span>`;
+    b.innerHTML = `<span class="shape">${SHAPES[i]}</span>` + (q.hint === i ? '<span style="font-size:2.6rem;margin-left:8px">✅</span>' : '');
     b.onclick = () => {
       pad.querySelectorAll('button').forEach(x => x.disabled = true);
       send({t:'answer', choice: i});
