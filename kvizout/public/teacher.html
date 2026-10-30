@@ -1,0 +1,1048 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Квізоут — викладач</title>
+<link rel="stylesheet" href="/style.css">
+<style>
+  .screen{max-width:1100px}
+  .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:14px}
+  .quiz-item{background:#f4f0fb;border-radius:10px;padding:14px}
+  .quiz-item h3{margin-bottom:6px;word-break:break-word}
+  .quiz-item .row{margin-top:10px}
+  .quiz-item button{padding:8px 12px}
+  .c0{color:var(--red)} .c1{color:var(--blue)} .c2{color:var(--yellow)} .c3{color:var(--green)}
+
+  /* повідомлення про імпорт і підказка */
+  .note{padding:10px 14px;border-radius:8px;margin-top:12px;line-height:1.4}
+  .note.ok{background:#e6f4e1;color:#1d5c0a}
+  .note.err{background:#fde8e8;color:#8a1111}
+  .help{margin-top:12px;background:#f4f0fb;border-radius:8px;padding:10px 14px}
+  .help summary{cursor:pointer;font-weight:700}
+  .help p,.help ul{margin-top:8px}
+  .help ul{margin-left:20px}
+  .help li{margin:4px 0}
+  .demo{border-collapse:collapse;margin-top:8px;font-size:.9rem;display:block;overflow-x:auto}
+  .demo th,.demo td{border:1px solid #b9aedb;padding:4px 8px;white-space:nowrap}
+  .demo th{background:#e3dcf2}
+
+  /* редактор */
+  .q-edit{border:2px solid #e3dcf2;border-radius:10px;padding:14px;margin-bottom:12px}
+  .ans-edit{display:flex;gap:8px;align-items:center}
+  .ans-edit input[type=radio]{width:auto;margin:0}
+  .ans-edit input[type=text]{flex:1}
+  .ans-edit button{padding:6px 10px}
+
+  /* лобі */
+  .pin{font-size:clamp(3rem,12vw,7rem);font-weight:800;letter-spacing:.12em;text-align:center;line-height:1.1}
+  .joinurl{font-size:1.3rem;text-align:center;margin:8px 0 18px;word-break:break-all}
+
+  /* питання */
+  .qhead{display:flex;justify-content:space-between;align-items:center;font-weight:700;font-size:1.2rem}
+  .qcard{background:#fff;color:#222;border-radius:14px;padding:clamp(20px,5vw,50px) 24px;text-align:center;font-size:clamp(1.5rem,4vw,2.8rem);font-weight:700;margin:12px 0;word-break:break-word}
+  .secs{font-size:2.4rem;font-weight:800;min-width:60px;text-align:right}
+  .tgrid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+  .tgrid.n3 .tans:last-child{grid-column:span 2}
+  .tans{display:flex;align-items:center;gap:14px;border-radius:10px;padding:clamp(14px,3vw,28px);font-size:clamp(1.1rem,2.6vw,2rem);font-weight:700;box-shadow:0 5px 0 rgba(0,0,0,.25);word-break:break-word}
+  .tans .shape{font-size:2.4rem}
+  .progress{font-size:1.3rem;font-weight:700}
+
+  /* результат питання */
+  .rrow{display:flex;align-items:center;gap:12px;margin:10px 0;color:#222}
+  .rrow .shape{font-size:1.8rem;width:34px;text-align:center}
+  .rrow .rtext{flex:0 0 28%;font-weight:700;word-break:break-word}
+  .rtrack{flex:1;background:#eee;border-radius:6px;height:30px;overflow:hidden}
+  .rfill{height:100%;min-width:4px;transition:width .6s}
+  .rrow.bad{opacity:.5}
+  .rrow b{min-width:34px;text-align:right}
+  .ok-mark{font-size:1.6rem;width:28px}
+  .scroll{max-height:55vh;overflow:auto}
+  .podium small{font-weight:400;opacity:.7}
+  .podium .gain{color:#26890c}
+  @media(max-width:700px){ .tgrid{grid-template-columns:1fr} .tgrid.n3 .tans:last-child{grid-column:auto} .rrow .rtext{flex-basis:35%} }
+</style>
+</head>
+<body>
+<header>
+  <h1>🎯 Квізоут — викладач</h1>
+  <span><span id="hdrPin" class="muted"></span> <a href="/" style="color:#fff;margin-left:10px" title="На головну">⌂</a></span>
+</header>
+
+<main>
+  <!-- ВХІД ВЧИТЕЛЯ -->
+  <section id="login" class="screen active" style="max-width:460px">
+    <div class="card">
+      <h2>🧑‍🏫 Вхід для вчителя</h2>
+      <input id="codeInput" placeholder="Код доступу" autocomplete="off" autocapitalize="characters" maxlength="32">
+      <button class="green" style="width:100%;margin-top:10px" id="loginBtn" onclick="doLogin()">Увійти</button>
+      <div id="loginErr" style="color:#c00;margin-top:8px;min-height:1.2em"></div>
+    </div>
+  </section>
+
+  <!-- БІБЛІОТЕКА -->
+  <section id="lib" class="screen">
+    <div class="card">
+      <div class="row" style="justify-content:space-between">
+        <h2 style="margin:0">Мої вікторини <small id="syncState" style="font-size:.7rem;font-weight:400"></small></h2>
+        <div class="row">
+          <button class="gray" onclick="$('importFile').click()">⬆ Імпорт (Excel / Word / JSON)</button>
+          <button class="green" onclick="newQuiz()">+ Створити вікторину</button>
+          <input type="file" id="importFile" accept=".xlsx,.docx,.json,application/json,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.openxmlformats-officedocument.wordprocessingml.document" style="display:none" onchange="importQuiz(this)">
+        </div>
+      </div>
+      <div id="importMsg" class="note" style="display:none"></div>
+      <details class="help">
+        <summary>📄 Як імпортувати вікторини з Excel (.xlsx) або Word (.docx)</summary>
+        <p><b>Excel (.xlsx):</b> кожен аркуш — окрема вікторина (назва аркуша = назва вікторини). Колонки: 1 — питання,
+           2–5 — варіанти відповідей, 6 — правильна відповідь (текст, номер 1–4 або літера), 7 — максимальна кількість балів за питання.
+           Рядок із заголовками необов'язковий: якщо він є («Запитання», «Варіант 1»…«Варіант 4», «Правильна відповідь», «Оцінювання (бал)», «Час»),
+           колонки визначаються за ним, і він може бути не першим рядком (над ним можна залишити назву таблиці).
+           Порожні рядки пропускаються; якщо питань понад 100, вікторина ділиться на частини.</p>
+        <p><b>Word:</b></p>
+        <p>Підготуйте в Word <b>таблицю</b>: перший рядок — заголовки, далі по одному питанню в рядку.</p>
+        <table class="demo">
+          <tr><th>№</th><th>Питання</th><th>Відповідь 1</th><th>Відповідь 2</th><th>Відповідь 3</th><th>Відповідь 4</th><th>Правильна</th><th>Час</th></tr>
+          <tr><td>1</td><td>Столиця України?</td><td>Львів</td><td>Київ</td><td>Одеса</td><td>Харків</td><td>2</td><td>15</td></tr>
+          <tr><td>2</td><td>7 × 8 = 56?</td><td>Так</td><td>Ні</td><td></td><td></td><td>А</td><td></td></tr>
+        </table>
+        <ul>
+          <li><b>Правильна</b> — номер варіанта (1–4), літера (А–Г або A–D) або сам текст правильної відповіді.
+              Замість цієї колонки можна виділити правильний варіант <b>жирним</b>, кольором чи заливкою або поставити перед ним «*».</li>
+          <li>Варіантів від 2 до 4, порожні клітинки пропускаються. Колонки «№» і «Час» необов'язкові; час — у секундах (5–120), за замовчуванням 20.</li>
+          <li>Назва вікторини — перший рядок тексту перед таблицею (якщо його немає, береться назва файлу).</li>
+          <li>Після імпорту вікторину можна переглянути й виправити кнопкою ✎.</li>
+        </ul>
+      </details>
+      <div id="quizList" class="grid" style="margin-top:14px"></div>
+    </div>
+  </section>
+
+  <!-- РЕДАКТОР -->
+  <section id="editor" class="screen">
+    <div class="card">
+      <h2>Редактор вікторини</h2>
+      <input id="qzTitle" placeholder="Назва вікторини" maxlength="80">
+      <div id="qEditList" style="margin-top:14px"></div>
+      <div class="row">
+        <button onclick="addQuestion()">+ Додати питання</button>
+        <button class="green" onclick="saveQuiz()">💾 Зберегти</button>
+        <button class="gray" onclick="show('lib')">Скасувати</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- ЛОБІ -->
+  <section id="lobby" class="screen">
+    <div class="center muted">Відкрийте на телефоні та оберіть «Я учень»:</div>
+    <div class="joinurl" id="joinUrl"></div>
+    <div class="center muted">PIN гри (потрібен, лише якщо гра не знайшлась сама):</div>
+    <div class="pin" id="pinBig"></div>
+    <div class="card" style="margin-top:18px">
+      <div class="row" style="justify-content:space-between">
+        <h2 style="margin:0" id="lobbyTitle"></h2>
+        <b id="plCount"></b>
+      </div>
+      <div class="chips" id="plList"></div>
+      <p class="muted" style="color:#555;margin:0 0 14px">На телефонах учнів з'являться лише символи ▲ ◆ ● ■ — питання та варіанти відповідей видно тільки на цьому екрані.</p>
+      <label class="row" style="margin:0 0 14px;color:#222">
+        <input type="checkbox" id="speedChk" checked style="width:auto" onchange="send({t:'setSpeed', value:this.checked})">
+        <span>Бали залежать від швидкості: максимум — за миттєву відповідь, до 50% — за найповільнішу (вимкніть, щоб за кожну правильну відповідь давати повні бали)</span>
+      </label>
+      <div class="row">
+        <button class="green" id="startBtn" onclick="send({t:'next'})">▶ Почати гру</button>
+        <button class="gray" onclick="endGame()">Скасувати</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- ПИТАННЯ (головний екран) -->
+  <section id="question" class="screen">
+    <div class="qhead"><span id="qIdx"></span><span class="progress" id="qProg"></span><span class="secs" id="secs"></span></div>
+    <div class="timer"><div id="bar"></div></div>
+    <div class="qcard" id="qText"></div>
+    <div class="tgrid" id="tgrid"></div>
+    <div class="center" style="margin-top:16px"><button class="gray" onclick="send({t:'endQuestion'})">Завершити питання</button></div>
+  </section>
+
+  <!-- РЕЗУЛЬТАТ ПИТАННЯ -->
+  <section id="reveal" class="screen">
+    <div class="card">
+      <div class="muted" id="rIdx" style="color:#555"></div>
+      <h2 id="rText"></h2>
+      <div id="rBars"></div>
+    </div>
+    <div class="card">
+      <h2>🏆 Лідери</h2>
+      <ol class="podium" id="rBoard"></ol>
+    </div>
+    <div class="center"><button class="green" id="nextBtn" onclick="send({t:'next'})"></button></div>
+  </section>
+
+  <!-- ФІНАЛ -->
+  <section id="final" class="screen">
+    <div class="card">
+      <h2>🎉 Підсумки гри</h2>
+      <ol class="podium scroll" id="fBoard"></ol>
+      <div class="row" style="margin-top:14px">
+        <button onclick="downloadCSV()">⬇ Завантажити результати (CSV)</button>
+        <button class="green" onclick="endGame()">Завершити</button>
+      </div>
+    </div>
+  </section>
+</main>
+
+<script>
+const SHAPES = ['▲','◆','●','■'];
+const $ = id => document.getElementById(id);
+const esc = s => String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const store = {
+  get(k, d){ try{ return JSON.parse(localStorage.getItem(k)) ?? d }catch{ return d } },
+  set(k, v){ try{ localStorage.setItem(k, JSON.stringify(v)) }catch{} }
+};
+
+const DEMO = {
+  id: 'demo', title: 'Демо: загальні знання',
+  questions: [
+    {text:'Столиця України?', answers:['Львів','Київ','Одеса','Харків'], correct:1, time:15},
+    {text:'Скільки планет у Сонячній системі?', answers:['7','8','9'], correct:1, time:15},
+    {text:'Яка мова програмування працює в браузері?', answers:['Python','C++','JavaScript','Rust'], correct:2, time:15},
+    {text:'7 × 8 = 56?', answers:['Так','Ні'], correct:0, time:10}
+  ]
+};
+
+let quizzes = store.get('kv_quizzes', [DEMO]);
+let editing = null;
+let ws = null, tSession = null, intentionalClose = false, reconnectTimer = null;
+let barRAF = null, finalBoard = [], gameTitle = '';
+let tCode = '';
+
+try { tSession = JSON.parse(sessionStorage.getItem('kv_teacher')); } catch {}
+try { tCode = sessionStorage.getItem('kv_code') || ''; } catch {}
+const saveSession = () => { try { tSession ? sessionStorage.setItem('kv_teacher', JSON.stringify(tSession)) : sessionStorage.removeItem('kv_teacher'); } catch {} };
+
+function show(id){
+  document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+  $(id).classList.add('active');
+  if (id !== 'question') cancelAnimationFrame(barRAF);
+  if (id === 'lib') { renderLib(); refreshQuizzes(); }
+  window.scrollTo(0, 0);
+}
+
+/* ================= БІБЛІОТЕКА ================= */
+function persist(){ store.set('kv_quizzes', quizzes); }
+
+/* ================= ЗБЕРЕЖЕННЯ НА СЕРВЕРІ =================
+   Сервер — головне сховище вікторин (їх видно з будь-якого пристрою після входу з кодом).
+   localStorage лишається лише кешем, щоб список відображався одразу й працював без зв'язку.
+   Кожна зміна потрапляє в чергу «outbox» і лишається там, доки сервер не підтвердить збереження. */
+let authedOk = false, outbox = [], opVersion = 0, listReqVersion = -1, needRefresh = false;
+
+function setSync(ok, text){
+  const el = $('syncState');
+  if (!el) return;
+  el.textContent = text;
+  el.style.color = ok ? '#1d5c0a' : '#8a1111';
+}
+const cloudReady = () => authedOk && ws && ws.readyState === 1;
+function flushOps(){
+  if (cloudReady()) { outbox.forEach(o => ws.send(JSON.stringify(o))); return true; }
+  if (tCode) connect();                       // після з'єднання й авторизації черга відправиться сама
+  return false;
+}
+function cloudOp(op){
+  outbox.push({ rid: Math.random().toString(36).slice(2) + Date.now().toString(36), ...op });
+  opVersion++;
+  setSync(false, '⏳ Збереження…');
+  flushOps();
+}
+const cloudPut = list => cloudOp({ t: 'qzPut', list });
+const cloudDel = id => cloudOp({ t: 'qzDel', id });
+
+function refreshQuizzes(){
+  if (!cloudReady()) { if (tCode) connect(); return; }
+  if (!outbox.length) setSync(false, '⏳ Синхронізація…');
+  flushOps();
+  listReqVersion = opVersion;
+  send({ t: 'qzList' });
+}
+function onQuizList(list){
+  if (!Array.isArray(list)) return;
+  // поки є неотримані підтвердження — список може бути застарілим, перепитаємо пізніше
+  if (outbox.length || opVersion !== listReqVersion) { needRefresh = true; return; }
+  let merged = list;
+  if (!store.get('kv_migrated', false)) {
+    // перший вхід після оновлення: переносимо на сервер вікторини, що були лише в цьому браузері
+    const have = new Set(list.map(q => q.id));
+    const up = quizzes.filter(q => !have.has(q.id) && (q.id !== 'demo' || !list.length));
+    store.set('kv_migrated', true);
+    if (up.length) { merged = [...list, ...up]; cloudPut(up); }
+  }
+  quizzes = merged; persist(); renderLib();
+  if (!outbox.length) setSync(true, '☁ Збережено на сервері');
+}
+function onQuizAck(m){
+  outbox = outbox.filter(o => o.rid !== m.rid);
+  if (m.rejected) alert(`Сервер не прийняв вікторин: ${m.rejected}. Перевірте, що в кожній є питання та 2–4 непорожні варіанти.`);
+  if (!outbox.length) {
+    setSync(true, '☁ Збережено на сервері');
+    if (needRefresh) { needRefresh = false; refreshQuizzes(); }
+  }
+}
+
+function renderLib(){
+  $('quizList').innerHTML = quizzes.map(q => `
+    <div class="quiz-item">
+      <h3>${esc(q.title)}</h3>
+      <small>Питань: ${q.questions.length}</small>
+      <div class="row">
+        <button class="green" onclick="startGame('${q.id}')">▶ Запустити</button>
+        <button onclick="editQuiz('${q.id}')" title="Редагувати">✎</button>
+        <button class="gray" onclick="exportQuiz('${q.id}')" title="Експорт у файл">⬇</button>
+        <button class="red" onclick="deleteQuiz('${q.id}')" title="Видалити">🗑</button>
+      </div>
+    </div>`).join('') || '<p>Ще немає вікторин. Створіть першу!</p>';
+}
+function deleteQuiz(id){
+  if (!confirm('Видалити цю вікторину?')) return;
+  quizzes = quizzes.filter(q => q.id !== id); persist(); renderLib(); cloudDel(id);
+}
+
+/* Бали за питання: число > 0 (дозволена кома), інакше null */
+function parsePoints(v){
+  if (v === null || v === undefined || v === '') return null;
+  const n = parseFloat(String(v).replace(/\s/g, '').replace(',', '.'));
+  return Number.isFinite(n) && n > 0 ? Math.round(n * 100) / 100 : null;
+}
+
+/* Перевірка / очищення вікторини (редактор, імпорт) */
+function normalizeQuiz(q){
+  if (!q || typeof q.title !== 'string' || !Array.isArray(q.questions) || !q.questions.length) return null;
+  const questions = [];
+  for (const x of q.questions) {
+    if (!x || typeof x.text !== 'string' || !x.text.trim() || !Array.isArray(x.answers)) return null;
+    const answers = x.answers.map(a => String(a).trim());
+    if (answers.length < 2 || answers.length > 4 || answers.some(a => !a)) return null;
+    const correct = Number(x.correct);
+    if (!Number.isInteger(correct) || correct < 0 || correct >= answers.length) return null;
+    questions.push({ text: x.text.trim(), answers, correct, time: Math.min(120, Math.max(5, Number(x.time) || 20)),
+                     points: parsePoints(x.points) ?? 1000 });
+  }
+  return { id: 'q' + Date.now() + Math.floor(Math.random()*1000), title: q.title.trim().slice(0, 80) || 'Вікторина', questions };
+}
+
+function exportQuiz(id){
+  const q = quizzes.find(x => x.id === id);
+  const blob = new Blob([JSON.stringify({title:q.title, questions:q.questions}, null, 2)], {type:'application/json'});
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = (q.title.replace(/[^\p{L}\p{N}_-]+/gu, '_') || 'quiz') + '.json';
+  a.click(); URL.revokeObjectURL(a.href);
+}
+function importQuiz(input){
+  const f = input.files[0]; input.value = '';
+  if (!f) return;
+  if (/\.docx$/i.test(f.name)) return importDocx(f);
+  if (/\.xlsx?m?$/i.test(f.name)) {
+    if (/\.xls$/i.test(f.name)) return notify('Старий формат .xls не підтримується. В Excel виберіть «Файл → Зберегти як → Книга Excel (.xlsx)», потім імпортуйте його.', 'err');
+    return importXlsx(f);
+  }
+  if (/\.doc$/i.test(f.name)) return notify('Старий формат .doc не підтримується. У Word відкрийте файл і виберіть «Файл → Зберегти як → Документ Word (.docx)», потім імпортуйте його.', 'err');
+  const r = new FileReader();
+  r.onload = () => {
+    try {
+      const data = JSON.parse(r.result);
+      const list = Array.isArray(data) ? data : [data];
+      const ok = list.map(normalizeQuiz).filter(Boolean);
+      if (!ok.length) throw 0;
+      quizzes.push(...ok); persist(); renderLib(); cloudPut(ok);
+      notify(`✅ Імпортовано вікторин: <b>${ok.length}</b>.`, 'ok');
+    } catch { notify('Не вдалося імпортувати: файл має неправильний формат. Підтримуються .xlsx, .docx та .json (експорт із цієї сторінки).', 'err'); }
+  };
+  r.readAsText(f);
+}
+
+/* ================= ІМПОРТ З WORD (.docx) ================= */
+const W_NS = 'http://schemas.openxmlformats.org/wordprocessingml/2006/main';
+
+function notify(html, kind){
+  const el = $('importMsg');
+  el.className = 'note ' + (kind || 'ok');
+  el.innerHTML = html;
+  el.style.display = 'block';
+}
+const bullets = list => '<ul style="margin:6px 0 0 20px">' + list.slice(0, 10).map(x => '<li>' + esc(x) + '</li>').join('')
+  + (list.length > 10 ? `<li>… і ще ${list.length - 10}</li>` : '') + '</ul>';
+
+/* .docx — це ZIP. Читаємо його без бібліотек: знаходимо файл у центральному каталозі й розпаковуємо. */
+function zipDir(buf){
+  const dv = new DataView(buf), u8 = new Uint8Array(buf);
+  let eocd = -1;
+  for (let i = u8.length - 22; i >= Math.max(0, u8.length - 22 - 65535); i--) {
+    if (dv.getUint32(i, true) === 0x06054b50) { eocd = i; break; }
+  }
+  if (eocd < 0) throw new Error('not-zip');
+  const count = dv.getUint16(eocd + 10, true);
+  let p = dv.getUint32(eocd + 16, true);
+  const dir = new Map();
+  for (let n = 0; n < count; n++) {
+    if (p + 46 > u8.length || dv.getUint32(p, true) !== 0x02014b50) break;
+    const method = dv.getUint16(p + 10, true), csize = dv.getUint32(p + 20, true);
+    const nameLen = dv.getUint16(p + 28, true), extraLen = dv.getUint16(p + 30, true), cmtLen = dv.getUint16(p + 32, true);
+    const lho = dv.getUint32(p + 42, true);
+    const name = new TextDecoder().decode(u8.subarray(p + 46, p + 46 + nameLen));
+    dir.set(name, { method, csize, lho });
+    p += 46 + nameLen + extraLen + cmtLen;
+  }
+  return dir;
+}
+async function zipGet(buf, dir, name){
+  const e = dir.get(name);
+  if (!e) return null;
+  const dv = new DataView(buf), u8 = new Uint8Array(buf);
+  const start = e.lho + 30 + dv.getUint16(e.lho + 26, true) + dv.getUint16(e.lho + 28, true);
+  const data = u8.subarray(start, start + e.csize);
+  if (e.method === 0) return data;
+  if (e.method === 8) {
+    const stream = new Blob([data]).stream().pipeThrough(new DecompressionStream('deflate-raw'));
+    return new Uint8Array(await new Response(stream).arrayBuffer());
+  }
+  throw new Error('not-zip');
+}
+const readZipEntry = async (buf, wanted) => zipGet(buf, zipDir(buf), wanted);
+
+/* --- допоміжні функції для XML Word --- */
+const wEl = (node, name) => node ? [...node.childNodes].filter(n => n.nodeType === 1 && n.namespaceURI === W_NS && n.localName === name) : [];
+const clean = s => String(s || '').replace(/\s+/g, ' ').trim();
+
+function runText(node){
+  let s = '';
+  for (const c of node.childNodes) {
+    if (c.nodeType !== 1) continue;
+    const n = c.localName;
+    if (n === 't') s += c.textContent;
+    else if (n === 'tab' || n === 'br' || n === 'cr') s += ' ';
+    else if (n === 'noBreakHyphen') s += '-';
+    else if (['delText', 'instrText', 'rPr', 'pPr', 'tbl', 'Fallback'].includes(n)) continue;
+    else s += runText(c);
+  }
+  return s;
+}
+
+// Чи виділено клітинку: жирний шрифт у всьому тексті, маркер кольором, або заливка клітинки.
+function cellMarked(tc){
+  const isFill = f => f && !['auto', 'ffffff', 'ffffffff'].includes(f.toLowerCase());
+  const shd = wEl(wEl(tc, 'tcPr')[0], 'shd')[0];
+  if (shd && isFill(shd.getAttributeNS(W_NS, 'fill'))) return true;
+  let runs = 0, bold = 0, mark = false;
+  for (const r of tc.getElementsByTagNameNS(W_NS, 'r')) {
+    if (!runText(r).trim()) continue;
+    runs++;
+    const rPr = wEl(r, 'rPr')[0];
+    if (!rPr) continue;
+    const b = wEl(rPr, 'b')[0];
+    if (b && !['0', 'false', 'off'].includes(b.getAttributeNS(W_NS, 'val'))) bold++;
+    const h = wEl(rPr, 'highlight')[0];
+    if (h && h.getAttributeNS(W_NS, 'val') !== 'none') mark = true;
+    const s = wEl(rPr, 'shd')[0];
+    if (s && isFill(s.getAttributeNS(W_NS, 'fill'))) mark = true;
+  }
+  return mark || (runs > 0 && bold === runs);
+}
+
+// Що означає заголовок колонки
+function headerKind(txt){
+  const raw = clean(txt);
+  if (/^[№#]$/.test(raw)) return 'num';
+  const t = raw.toLowerCase().replace(/[.:№#()\-_,]/g, ' ').replace(/\s+/g, ' ').trim();
+  if (!t || t.length > 36) return null;
+  if (/правил|вірн|верн|correct|ключ|\bkey\b/.test(t)) return 'correct';
+  if (/час|time|сек|тривал/.test(t)) return 'time';
+  if (/бал|оцін|очк|point|score|макс/.test(t)) return 'points';
+  if (/питан|запитан|question|завдан/.test(t)) return 'q';
+  if (/відпов|варіант|answer|option|^[a-dа-г]$|^[1-4]$/.test(t)) return 'a';
+  if (/^(n|no|номер|id|п\/п|п п)$/.test(t)) return 'num';
+  return null;
+}
+
+// Яка відповідь правильна: номер, літера, текст. null — клітинка порожня, -1 — не вдалося визначити.
+function resolveCorrect(raw, ans){
+  const c = clean(raw);
+  if (!c) return null;
+  const norm = t => t.toLowerCase().replace(/^[\s("«'“]+|[\s.,;:!?)"»'”]+$/g, '').replace(/\s+/g, ' ');
+  const byText = ans.findIndex(a => norm(a.text) === norm(c));
+  if (byText >= 0 && c.length > 2) return byText;            // довгий текст збігся з варіантом
+  let s = c.toLowerCase().replace(/^((правильна|вірна|відповідь|варіант|answer|option|correct)\s*[:№#\-–]*\s*)+/, '')
+           .replace(/^\(/, '').replace(/[).\s]+$/, '').trim();
+  const lead = s.match(/^([a-dа-г1-4])\s*[).]\s*\S/);          // «Б) Київ»
+  if (lead) s = lead[1];
+  let pos = null;
+  if (/^[1-4]$/.test(s)) pos = +s - 1;
+  else if (/^[a-d]$/.test(s)) pos = 'abcd'.indexOf(s);
+  else if (/^[а-г]$/.test(s)) pos = 'абвг'.indexOf(s);
+  if (pos !== null) { const i = ans.findIndex(a => a.pos === pos); if (i >= 0) return i; }
+  return byText;
+}
+
+function parseTime(raw){
+  const c = clean(raw).toLowerCase();
+  if (!c) return 20;
+  let v;
+  const mm = c.match(/^(\d+)\s*:\s*(\d{1,2})$/);               // 1:30
+  if (mm) v = +mm[1] * 60 + +mm[2];
+  else {
+    const n = c.match(/(\d+(?:[.,]\d+)?)/);
+    if (!n) return 20;
+    v = parseFloat(n[1].replace(',', '.'));
+    if (/хв|min/.test(c)) v *= 60;
+  }
+  return Math.min(120, Math.max(5, Math.round(v)));
+}
+
+/* --- головна функція: з XML документа Word робить вікторину --- */
+function parseDocxQuiz(xmlText, fallbackTitle){
+  const dom = new DOMParser().parseFromString(xmlText, 'application/xml');
+  const body = dom.getElementsByTagNameNS(W_NS, 'body')[0];
+  if (dom.getElementsByTagName('parsererror').length || !body) throw new Error('bad-xml');
+
+  const questions = [], errors = [], warnings = [];
+  let title = '', tables = 0, headerMap = null, warnedCols = false;
+
+  for (const node of body.childNodes) {
+    if (node.nodeType !== 1 || node.namespaceURI !== W_NS) continue;
+    if (node.localName === 'p') { if (!tables && !title) title = clean(runText(node)); continue; }
+    if (node.localName !== 'tbl') continue;
+    tables++;
+    let defMap = null;
+
+    wEl(node, 'tr').forEach((tr, ri) => {
+      const where = (tables > 1 ? `таблиця ${tables}, ` : '') + `рядок ${ri + 1}`;
+      const cells = [];
+      for (const tc of wEl(tr, 'tc')) {
+        const gs = wEl(wEl(tc, 'tcPr')[0], 'gridSpan')[0];
+        const span = gs ? Math.max(1, parseInt(gs.getAttributeNS(W_NS, 'val'), 10) || 1) : 1;
+        cells.push({ text: wEl(tc, 'p').map(runText).join(' '), marked: cellMarked(tc) });
+        for (let k = 1; k < span; k++) cells.push({ text: '', marked: false });
+      }
+      if (cells.every(c => !c.text.trim())) return;
+
+      // рядок із заголовками колонок?
+      const kinds = cells.map(c => headerKind(c.text));
+      const filled = cells.filter(c => c.text.trim()).length;
+      const known = kinds.filter(Boolean).length;
+      if (kinds.includes('q') && kinds.filter(k => k === 'a').length >= 2 && (ri === 0 || known >= filled)) {
+        const m = { q: kinds.indexOf('q'), correct: kinds.indexOf('correct'), time: kinds.indexOf('time'), points: kinds.indexOf('points'), answers: [] };
+        kinds.forEach((k, i) => { if (k === 'a') m.answers.push(i); });
+        if (m.answers.length > 4 && !warnedCols) { warnings.push('Колонок із відповідями більше за 4 — використано перші чотири.'); warnedCols = true; }
+        headerMap = m; defMap = null;
+        return;
+      }
+
+      // колонки: за заголовком, а якщо його немає — стандартний порядок
+      let m = headerMap;
+      if (!m) {
+        if (!defMap) {
+          const off = /^\d+[.)]?$/.test(clean(cells[0].text)) ? 1 : 0;
+          defMap = { q: off, answers: [off + 1, off + 2, off + 3, off + 4], correct: off + 5, time: off + 6, points: -1 };
+        }
+        m = defMap;
+      }
+      const get = i => (i >= 0 && cells[i]) ? cells[i] : { text: '', marked: false };
+
+      const qText = clean(get(m.q).text);
+      const ans = m.answers.slice(0, 4).map((ci, pos) => {
+        let text = clean(get(ci).text), pref = false;
+        const pm = text.match(/^[*+✓✔]\s*(.*)$/);
+        if (pm) { pref = true; text = pm[1]; }
+        return { pos, text, pref, marked: get(ci).marked };
+      }).filter(a => a.text);
+
+      if (!qText && !ans.length) return;
+      if (!qText) return errors.push(`${where}: немає тексту питання`);
+      if (ans.length < 2) return errors.push(`${where}: потрібно щонайменше 2 варіанти відповіді`);
+
+      let idx = resolveCorrect(get(m.correct).text, ans);
+      if (idx === null) {                                        // колонки немає або вона порожня → шукаємо виділення
+        const pref = ans.filter(a => a.pref), fmt = ans.filter(a => a.marked);
+        if (pref.length === 1) idx = ans.indexOf(pref[0]);
+        else if (fmt.length === 1) idx = ans.indexOf(fmt[0]);
+        else return errors.push(`${where}: не вказано правильну відповідь`);
+      } else if (idx < 0) {
+        return errors.push(`${where}: правильна відповідь «${clean(get(m.correct).text).slice(0, 30)}» не збігається з жодним варіантом`);
+      }
+
+      if (qText.length > 300) warnings.push(`${where}: текст питання обрізано до 300 символів`);
+      if (ans.some(a => a.text.length > 120)) warnings.push(`${where}: довгі варіанти відповіді обрізано до 120 символів`);
+      questions.push({
+        text: qText.slice(0, 300),
+        answers: ans.map(a => a.text.slice(0, 120)),
+        correct: idx,
+        time: m.time >= 0 ? parseTime(get(m.time).text) : 20,
+        points: m.points >= 0 ? parsePoints(get(m.points).text) : null
+      });
+    });
+  }
+
+  if (!tables) throw new Error('no-table');
+  if (questions.length > 100) { questions.length = 100; warnings.push('Імпортовано лише перші 100 питань.'); }
+  const t = title && title.length <= 80 ? title : clean(fallbackTitle);
+  return { title: t || 'Вікторина з Word', questions, errors, warnings };
+}
+
+async function importDocx(f){
+  try {
+    if (typeof DecompressionStream === 'undefined') throw new Error('old-browser');
+    if (f.size > 20 * 1024 * 1024) throw new Error('too-big');
+    const xml = await readZipEntry(await f.arrayBuffer(), 'word/document.xml');
+    if (!xml) throw new Error('not-zip');
+    const res = parseDocxQuiz(new TextDecoder().decode(xml), f.name.replace(/\.docx$/i, ''));
+
+    if (!res.questions.length) {
+      return notify('<b>Не вдалося знайти жодного питання.</b>' + (res.errors.length ? bullets(res.errors) : '')
+        + '<div style="margin-top:6px">Перевірте таблицю: перший рядок — заголовки («Питання», «Відповідь 1» … «Правильна»). Приклад — у підказці вище.</div>', 'err');
+    }
+    if (res.errors.length) {
+      const list = res.errors.slice(0, 8).map(e => '• ' + e).join('\n') + (res.errors.length > 8 ? `\n… і ще ${res.errors.length - 8}` : '');
+      if (!confirm(`Знайдено питань: ${res.questions.length}. Пропущено рядків: ${res.errors.length}:\n\n${list}\n\nІмпортувати знайдені питання?`)) {
+        return notify('Імпорт скасовано.', 'err');
+      }
+    }
+    const quiz = normalizeQuiz({ title: res.title, questions: res.questions });
+    if (!quiz) throw new Error('invalid');
+    quizzes.push(quiz); persist(); renderLib(); cloudPut([quiz]);
+    let html = `✅ Імпортовано «${esc(quiz.title)}»: питань — <b>${quiz.questions.length}</b>.`;
+    if (res.errors.length) html += `<div>Пропущено рядків: ${res.errors.length}.</div>` + bullets(res.errors);
+    if (res.warnings.length) html += '<div>Зауваження:</div>' + bullets(res.warnings);
+    html += '<div style="margin-top:4px">Перегляньте вікторину кнопкою ✎ — за потреби виправте.</div>';
+    notify(html, 'ok');
+  } catch (e) { importFail(e); }
+}
+
+function importFail(e){
+  const msg = {
+    'old-browser': 'Цей браузер застарів для читання Word/Excel-файлів. Оновіть його або скористайтеся імпортом .json.',
+    'too-big': 'Файл завеликий (понад 20 МБ).',
+    'not-zip': 'Файл не схожий на документ Office (.docx / .xlsx). Якщо файл захищено паролем, зніміть пароль і збережіть його ще раз.',
+    'not-xlsx': 'Файл не схожий на книгу Excel (.xlsx). Відкрийте його в Excel і збережіть як «Книга Excel (.xlsx)».',
+    'bad-xml': 'Не вдалося прочитати вміст файлу. Спробуйте відкрити його в Word/Excel і зберегти ще раз.',
+    'no-table': 'У документі не знайдено таблиці. Питання й відповіді мають бути в таблиці Word.',
+    'invalid': 'Не вдалося створити вікторину з цього файлу.'
+  }[e && e.message] || 'Не вдалося прочитати файл.';
+  notify(esc(msg), 'err');
+}
+
+/* ================= ІМПОРТ З EXCEL (.xlsx) ================= */
+const S_NS = 'http://schemas.openxmlformats.org/spreadsheetml/2006/main';
+const R_NS = 'http://schemas.openxmlformats.org/officeDocument/2006/relationships';
+const MAX_Q = 100;          // максимум питань в одній вікторині (більші діляться на частини)
+const MAX_TEXT = 600, MAX_ANS = 500;   // ті самі ліміти, що й у редакторі
+
+function parseXml(u8){
+  const dom = new DOMParser().parseFromString(new TextDecoder().decode(u8), 'application/xml');
+  if (dom.getElementsByTagName('parsererror').length) throw new Error('bad-xml');
+  return dom;
+}
+const kids = (node, name) => [...node.childNodes].filter(n => n.nodeType === 1 && n.localName === name);
+
+// текст елемента <si> / <is> (без фонетичних підказок <rPh>)
+function xlsxText(el){
+  let s = '';
+  for (const t of el.getElementsByTagNameNS(S_NS, 't')) if (t.parentNode.localName !== 'rPh') s += t.textContent;
+  return s;
+}
+function colIndex(ref){
+  const m = /^([A-Za-z]+)/.exec(ref || '');
+  if (!m) return -1;
+  let n = 0;
+  for (const ch of m[1].toUpperCase()) n = n * 26 + ch.charCodeAt(0) - 64;
+  return n - 1;
+}
+
+// аркуш → розріджений масив рядків; кожен рядок — масив текстів клітинок
+function sheetRows(dom, sst){
+  const rows = [];
+  let rowNo = -1;
+  for (const row of dom.getElementsByTagNameNS(S_NS, 'row')) {
+    const r = parseInt(row.getAttribute('r'), 10);
+    rowNo = Number.isFinite(r) ? r - 1 : rowNo + 1;
+    const cells = [];
+    let col = -1;
+    for (const c of kids(row, 'c')) {
+      const ci = colIndex(c.getAttribute('r'));
+      col = ci >= 0 ? ci : col + 1;
+      const t = c.getAttribute('t'), v = kids(c, 'v')[0];
+      let s = '';
+      if (t === 'inlineStr') { const is = kids(c, 'is')[0]; s = is ? xlsxText(is) : ''; }
+      else if (v) {
+        const raw = v.textContent;
+        if (t === 's') s = sst[+raw] ?? '';
+        else if (t === 'e') s = '';
+        else if (t === 'str' || t === 'b' || t === 'd') s = raw;
+        else { const n = Number(raw); s = raw.trim() !== '' && Number.isFinite(n) ? String(+n.toPrecision(12)) : raw; }
+      }
+      cells[col] = s;
+    }
+    rows[rowNo] = Array.from(cells, x => x || '');
+  }
+  return rows;
+}
+
+// один аркуш → список питань. Колонки: за заголовком (якщо є), інакше стандартний порядок:
+// питання | 4 варіанти | правильна | бали
+function parseXlsxSheet(rows, sheetName){
+  const list = [];
+  rows.forEach((r, i) => list.push([i, r]));
+  const questions = [], errors = [], warnings = [];
+  const headerOf = cells => {
+    const kinds = cells.map(headerKind);
+    return kinds.includes('q') && kinds.filter(k => k === 'a').length >= 2 ? kinds : null;
+  };
+
+  let m = null, from = 0;
+  for (let k = 0; k < Math.min(list.length, 10); k++) {      // заголовок може бути не першим рядком
+    const kinds = headerOf(list[k][1]);
+    if (!kinds) continue;
+    m = { q: kinds.indexOf('q'), correct: kinds.indexOf('correct'), time: kinds.indexOf('time'), points: kinds.indexOf('points'), answers: [] };
+    kinds.forEach((x, i) => { if (x === 'a') m.answers.push(i); });
+    if (m.answers.length > 4) warnings.push(`«${sheetName}»: колонок із відповідями більше за 4 — використано перші чотири.`);
+    from = k + 1;
+    break;
+  }
+  if (!m) {
+    const first = list.find(([, r]) => r.some(x => clean(x)));
+    const off = first && /^\d+[.)]?$/.test(clean(first[1][0])) ? 1 : 0;
+    m = { q: off, answers: [off + 1, off + 2, off + 3, off + 4], correct: off + 5, points: off + 6, time: -1 };
+  }
+
+  for (const [i, cells] of list) {
+    if (i < from || cells.every(x => !clean(x)) || headerOf(cells)) continue;
+    const where = `«${sheetName}», рядок ${i + 1}`;
+    const get = j => j >= 0 ? clean(cells[j]) : '';
+    const qText = get(m.q);
+    const ans = m.answers.slice(0, 4).map((ci, pos) => ({ pos, text: get(ci) })).filter(a => a.text);
+
+    if (!qText && !ans.length) continue;
+    if (!qText) { errors.push(`${where}: немає тексту питання`); continue; }
+    if (ans.length < 2) { errors.push(`${where}: потрібно щонайменше 2 варіанти відповіді`); continue; }
+
+    const idx = resolveCorrect(get(m.correct), ans);
+    if (idx === null) { errors.push(`${where}: не вказано правильну відповідь`); continue; }
+    if (idx < 0) { errors.push(`${where}: правильна відповідь «${get(m.correct).slice(0, 30)}» не збігається з жодним варіантом`); continue; }
+
+    if (qText.length > MAX_TEXT) warnings.push(`${where}: текст питання обрізано до ${MAX_TEXT} символів`);
+    if (ans.some(a => a.text.length > MAX_ANS)) warnings.push(`${where}: довгі варіанти відповіді обрізано до ${MAX_ANS} символів`);
+    questions.push({
+      text: qText.slice(0, MAX_TEXT),
+      answers: ans.map(a => a.text.slice(0, MAX_ANS)),
+      correct: idx,
+      time: m.time >= 0 ? parseTime(get(m.time)) : 20,
+      points: m.points >= 0 ? parsePoints(get(m.points)) : null
+    });
+  }
+  return { questions, errors, warnings };
+}
+
+// вся книга → список вікторин (аркуш = вікторина)
+async function parseXlsx(buf, fallbackTitle){
+  const dir = zipDir(buf);
+  const wbXml = await zipGet(buf, dir, 'xl/workbook.xml');
+  if (!wbXml) throw new Error('not-xlsx');
+  const wb = parseXml(wbXml);
+
+  const rels = {};
+  const relsXml = await zipGet(buf, dir, 'xl/_rels/workbook.xml.rels');
+  if (relsXml) for (const r of parseXml(relsXml).getElementsByTagNameNS('*', 'Relationship')) rels[r.getAttribute('Id')] = r.getAttribute('Target');
+
+  const sst = [];
+  const sstXml = await zipGet(buf, dir, 'xl/sharedStrings.xml');
+  if (sstXml) for (const si of parseXml(sstXml).getElementsByTagNameNS(S_NS, 'si')) sst.push(xlsxText(si));
+
+  const out = { quizzes: [], errors: [], warnings: [], empty: [] };
+  const sheets = [...wb.getElementsByTagNameNS(S_NS, 'sheet')];
+  for (let n = 0; n < sheets.length; n++) {
+    const sh = sheets[n];
+    if ((sh.getAttribute('state') || 'visible') !== 'visible') continue;
+    const name = clean(sh.getAttribute('name')) || fallbackTitle || `Аркуш ${n + 1}`;
+    let target = rels[sh.getAttributeNS(R_NS, 'id')] || `worksheets/sheet${n + 1}.xml`;
+    target = target.startsWith('/') ? target.slice(1) : 'xl/' + target;
+    const xml = await zipGet(buf, dir, target);
+    if (!xml) continue;
+    const res = parseXlsxSheet(sheetRows(parseXml(xml), sst), name);
+    out.errors.push(...res.errors); out.warnings.push(...res.warnings);
+    if (!res.questions.length) { out.empty.push(name); continue; }
+    const parts = Math.ceil(res.questions.length / MAX_Q);
+    for (let k = 0; k < parts; k++) {
+      const title = parts > 1 ? `${name.slice(0, 68)} (ч. ${k + 1}/${parts})` : name;
+      out.quizzes.push({ title, questions: res.questions.slice(k * MAX_Q, (k + 1) * MAX_Q) });
+    }
+    if (parts > 1) out.warnings.push(`«${name}»: питань більше за ${MAX_Q} — вікторину розділено на ${parts} частини.`);
+  }
+  return out;
+}
+
+async function importXlsx(f){
+  try {
+    if (typeof DecompressionStream === 'undefined') throw new Error('old-browser');
+    if (f.size > 20 * 1024 * 1024) throw new Error('too-big');
+    const res = await parseXlsx(await f.arrayBuffer(), f.name.replace(/\.xlsx?m?$/i, ''));
+
+    if (!res.quizzes.length) {
+      return notify('<b>Не вдалося знайти жодного питання.</b>' + (res.errors.length ? bullets(res.errors) : '')
+        + '<div style="margin-top:6px">Перевірте файл: у кожному рядку — питання, 2–4 варіанти, правильна відповідь (див. підказку вище).</div>', 'err');
+    }
+    const total = res.quizzes.reduce((a, q) => a + q.questions.length, 0);
+    if (res.errors.length) {
+      const list = res.errors.slice(0, 8).map(e => '• ' + e).join('\n') + (res.errors.length > 8 ? `\n… і ще ${res.errors.length - 8}` : '');
+      if (!confirm(`Знайдено питань: ${total}. Пропущено рядків: ${res.errors.length}:\n\n${list}\n\nІмпортувати знайдені питання?`)) {
+        return notify('Імпорт скасовано.', 'err');
+      }
+    }
+    const added = res.quizzes.map(normalizeQuiz).filter(Boolean);
+    if (!added.length) throw new Error('invalid');
+    quizzes.push(...added); persist(); renderLib(); cloudPut(added);
+
+    let html = `✅ Імпортовано вікторин: <b>${added.length}</b>, питань: <b>${total}</b>.`
+      + bullets(added.map(q => `${q.title} — ${q.questions.length}`));
+    if (res.empty.length) html += `<div>Аркуші без питань (пропущено): ${esc(res.empty.join(', '))}.</div>`;
+    if (res.errors.length) html += `<div>Пропущено рядків: ${res.errors.length}.</div>` + bullets(res.errors);
+    if (res.warnings.length) html += '<div>Зауваження:</div>' + bullets(res.warnings);
+    html += '<div style="margin-top:4px">Перегляньте вікторини кнопкою ✎ — за потреби виправте.</div>';
+    notify(html, 'ok');
+  } catch (e) { importFail(e); }
+}
+
+/* ================= РЕДАКТОР ================= */
+const blankQuestion = () => ({text:'', answers:['','','',''], correct:0, time:20, points:1000});
+function newQuiz(){
+  editing = {id:'q' + Date.now(), title:'', questions:[blankQuestion()]};
+  renderEditor(); show('editor');
+}
+function editQuiz(id){
+  editing = JSON.parse(JSON.stringify(quizzes.find(q => q.id === id)));
+  renderEditor(); show('editor');
+}
+function renderEditor(){
+  $('qzTitle').value = editing.title;
+  $('qEditList').innerHTML = editing.questions.map((q, i) => `
+    <div class="q-edit">
+      <div class="row" style="justify-content:space-between">
+        <b>Питання ${i + 1}</b>
+        <button class="red" onclick="removeQuestion(${i})">Видалити</button>
+      </div>
+      <input placeholder="Текст питання (його бачить лише головний екран)" maxlength="600" value="${esc(q.text)}"
+             oninput="editing.questions[${i}].text=this.value">
+      ${q.answers.map((a, j) => `
+        <label class="ans-edit">
+          <input type="radio" name="c${i}" ${q.correct === j ? 'checked' : ''} onchange="editing.questions[${i}].correct=${j}" title="Правильна відповідь">
+          <span class="shape c${j}">${SHAPES[j]}</span>
+          <input type="text" placeholder="Відповідь ${j + 1}" maxlength="500" value="${esc(a)}"
+                 oninput="editing.questions[${i}].answers[${j}]=this.value">
+          ${q.answers.length > 2 ? `<button class="gray" onclick="removeAnswer(${i},${j})" title="Прибрати варіант">✕</button>` : ''}
+        </label>`).join('')}
+      <div class="row" style="margin-top:6px">
+        ${q.answers.length < 4 ? `<button class="gray" onclick="addAnswer(${i})">+ Варіант</button>` : ''}
+        <label>Час: <select style="width:auto" onchange="editing.questions[${i}].time=+this.value">
+          ${[5,10,15,20,30,45,60,90,120].map(t => `<option value="${t}" ${q.time === t ? 'selected' : ''}>${t} с</option>`).join('')}
+        </select></label>
+        <label title="Максимум балів за миттєву відповідь; за повільнішу — менше (якщо ввімкнено «за швидкість»)">Макс. балів:
+          <input type="number" min="0.01" step="any" style="width:110px" value="${q.points ?? 1000}"
+                 oninput="editing.questions[${i}].points=+this.value"></label>
+        <small class="muted" style="color:#555">● біля відповіді — правильна</small>
+      </div>
+    </div>`).join('');
+}
+function addQuestion(){ editing.questions.push(blankQuestion()); renderEditor(); }
+function removeQuestion(i){
+  if (editing.questions.length === 1) return alert('Потрібне хоча б одне питання.');
+  editing.questions.splice(i, 1); renderEditor();
+}
+function addAnswer(i){ editing.questions[i].answers.push(''); renderEditor(); }
+function removeAnswer(i, j){
+  const q = editing.questions[i];
+  q.answers.splice(j, 1);
+  if (q.correct === j) q.correct = 0; else if (q.correct > j) q.correct--;
+  renderEditor();
+}
+function saveQuiz(){
+  editing.title = $('qzTitle').value.trim();
+  if (!editing.title) return alert('Введіть назву вікторини.');
+  const bad = editing.questions.findIndex(q => !q.text.trim() || q.answers.some(a => !a.trim()));
+  if (bad >= 0) return alert(`Питання ${bad + 1}: заповніть текст питання та всі варіанти відповідей (або приберіть зайві).`);
+  const badP = editing.questions.findIndex(q => !(Number(q.points) > 0));
+  if (badP >= 0) return alert(`Питання ${badP + 1}: вкажіть максимальну кількість балів (число більше 0).`);
+  const i = quizzes.findIndex(q => q.id === editing.id);
+  if (i >= 0) quizzes[i] = editing; else quizzes.push(editing);
+  persist(); cloudPut([editing]); show('lib');
+}
+
+/* ================= З'ЄДНАННЯ ================= */
+function connect(onOpen){
+  clearTimeout(reconnectTimer);
+  if (ws && ws.readyState <= 1) {
+    if (!onOpen) return;
+    return ws.readyState === 1 ? onOpen() : ws.addEventListener('open', onOpen, {once:true});
+  }
+  const proto = location.protocol === 'https:' ? 'wss' : 'ws';
+  const sock = ws = new WebSocket(`${proto}://${location.host}`);
+  // на кожному новому з'єднанні спершу надсилаємо код вчителя (сервер перевіряє його сам)
+  sock.onopen = () => { if (tCode) send({t:'auth', code: tCode}); onOpen && onOpen(); };
+  sock.onmessage = e => { let m; try { m = JSON.parse(e.data); } catch { return; } handle(m); };
+  sock.onclose = () => {
+    if (sock === ws) authedOk = false;
+    if (sock !== ws || intentionalClose || !tSession) return;
+    reconnectTimer = setTimeout(() => connect(resume), 1500);
+  };
+}
+const send = m => ws && ws.readyState === 1 && ws.send(JSON.stringify(m));
+const resume = () => send({t:'resume', pin: tSession.pin, token: tSession.token});
+
+function startGame(id){
+  const q = quizzes.find(x => x.id === id);
+  gameTitle = q.title;
+  intentionalClose = false;
+  connect(() => send({t:'create', quiz:{title:q.title, questions:q.questions}}));
+}
+function endGame(){
+  if ($('lobby').classList.contains('active') || $('final').classList.contains('active') || confirm('Завершити гру для всіх?')) {
+    send({t:'close'});
+    tSession = null; saveSession(); $('hdrPin').textContent = '';
+    show('lib');
+  }
+}
+
+/* ================= ПОВІДОМЛЕННЯ СЕРВЕРА ================= */
+let joinUrls = [];
+function doLogin(){
+  const code = $('codeInput').value.trim();
+  if (!code) return;
+  tCode = code; $('loginErr').textContent = '';
+  intentionalClose = false;
+  if (ws && ws.readyState === 1) send({t:'auth', code}); else connect();
+}
+$('codeInput').addEventListener('keydown', e => { if (e.key === 'Enter') doLogin(); });
+
+function handle(m){
+  if (m.t === 'authOk') {
+    try { sessionStorage.setItem('kv_code', tCode); } catch {}
+    authedOk = true;
+    if (!tSession && $('login').classList.contains('active')) show('lib');
+    else refreshQuizzes();
+  }
+  else if (m.t === 'authFail' || m.t === 'authBlocked') {
+    authedOk = false;
+    tCode = ''; tSession = null; saveSession();
+    try { sessionStorage.removeItem('kv_code'); } catch {}
+    $('loginErr').textContent = m.t === 'authBlocked'
+      ? 'Забагато спроб. Зачекайте хвилину й спробуйте знову.' : 'Неправильний код.';
+    show('login');
+  }
+  else if (m.t === 'created') {
+    tSession = {pin: m.pin, token: m.token}; saveSession();
+    joinUrls = (['localhost','127.0.0.1','[::1]'].includes(location.hostname) && m.urls.length) ? m.urls : [location.origin];
+    $('pinBig').textContent = m.pin.slice(0,3) + ' ' + m.pin.slice(3);
+    $('joinUrl').innerHTML = joinUrls.map(u => `<b>${esc(u)}</b>`).join(' &nbsp;або&nbsp; ');
+    $('hdrPin').textContent = 'PIN: ' + m.pin;
+    $('lobbyTitle').textContent = gameTitle;
+    $('speedChk').checked = true;
+    renderPlayers([]);
+    show('lobby');
+  }
+  else if (m.t === 'qzList') onQuizList(m.list);
+  else if (m.t === 'qzOk') onQuizAck(m);
+  else if (m.t === 'state') render(m);
+  else if (m.t === 'players') renderPlayers(m.players);
+  else if (m.t === 'answered') $('qProg').textContent = `Відповіли: ${m.count} / ${m.total}`;
+  else if (m.t === 'resumeFailed') { tSession = null; saveSession(); show('lib'); }
+  else if (m.t === 'error') alert(m.msg);
+}
+
+function render(s){
+  gameTitle = s.title;
+  $('hdrPin').textContent = 'PIN: ' + s.pin;
+  if (s.phase === 'lobby') {
+    $('pinBig').textContent = s.pin.slice(0,3) + ' ' + s.pin.slice(3);
+    $('joinUrl').innerHTML = joinUrls.map(u => `<b>${esc(u)}</b>`).join(' &nbsp;або&nbsp; ') || `<b>${esc(location.origin)}</b>`;
+    $('lobbyTitle').textContent = s.title;
+    $('speedChk').checked = s.speed !== false;
+    renderPlayers(s.players); show('lobby');
+  }
+  else if (s.phase === 'question') renderQuestion(s);
+  else if (s.phase === 'reveal') renderReveal(s.reveal);
+  else if (s.phase === 'finished') renderFinal(s.leaderboard);
+}
+
+function renderPlayers(list){
+  $('plCount').textContent = `Гравців: ${list.length}`;
+  $('plList').innerHTML = list.map(p =>
+    `<span class="chip ${p.online ? '' : 'off'}">${esc(p.name)} <button onclick="send({t:'kick', id:'${p.id}'})" title="Видалити">✕</button></span>`
+  ).join('') || '<span class="muted" style="color:#555">Чекаємо на учнів…</span>';
+  $('startBtn').disabled = list.length === 0;
+}
+
+function renderQuestion(s){
+  const q = s.question;
+  $('qIdx').textContent = `Питання ${q.index + 1} з ${s.total}`;
+  $('qText').textContent = q.text;
+  const grid = $('tgrid');
+  grid.className = 'tgrid' + (q.answers.length === 3 ? ' n3' : '');
+  grid.innerHTML = q.answers.map((a, i) =>
+    `<div class="tans a${i}"><span class="shape">${SHAPES[i]}</span><span>${esc(a)}</span></div>`).join('');
+  const p = s.answered || {count: 0, total: s.players.length};
+  $('qProg').textContent = `Відповіли: ${p.count} / ${p.total}`;
+
+  const endsAt = Date.now() + q.left, total = q.time * 1000, bar = $('bar'), secs = $('secs');
+  cancelAnimationFrame(barRAF);
+  (function tick(){
+    const left = Math.max(0, endsAt - Date.now());
+    bar.style.width = Math.min(100, left / total * 100) + '%';
+    secs.textContent = Math.ceil(left / 1000);
+    if (left > 0) barRAF = requestAnimationFrame(tick);
+  })();
+  show('question');
+}
+
+function renderReveal(r){
+  $('rIdx').textContent = `Питання ${r.index + 1}`;
+  $('rText').textContent = r.text;
+  const max = Math.max(1, ...r.counts);
+  $('rBars').innerHTML = r.answers.map((a, i) => `
+    <div class="rrow ${i === r.correct ? 'ok' : 'bad'}">
+      <span class="shape c${i}">${SHAPES[i]}</span>
+      <span class="rtext">${esc(a)}</span>
+      <div class="rtrack"><div class="rfill a${i}" style="width:${r.counts[i] / max * 100}%"></div></div>
+      <b>${r.counts[i]}</b>
+      <span class="ok-mark">${i === r.correct ? '✅' : ''}</span>
+    </div>`).join('');
+  $('rBoard').innerHTML = r.leaderboard.map(p =>
+    `<li><span>${p.rank}. ${esc(p.name)}</span><span>${p.score} ${p.gain ? `<small class="gain">+${p.gain}</small>` : ''}</span></li>`
+  ).join('') || '<li>Немає гравців</li>';
+  $('nextBtn').textContent = r.last ? '🏁 Показати підсумки' : 'Наступне питання →';
+  show('reveal');
+}
+
+function renderFinal(lb){
+  finalBoard = lb;
+  const medals = ['🥇','🥈','🥉'];
+  $('fBoard').innerHTML = lb.map((p, i) =>
+    `<li><span>${medals[i] || p.rank + '.'} ${esc(p.name)}</span><span>${p.score}</span></li>`).join('');
+  show('final');
+}
+
+function downloadCSV(){
+  // захист від «формул» в Excel: імена учнів — це довільний текст
+  const cell = v => { let s = String(v); if (/^[=+\-@\t\r]/.test(s)) s = "'" + s; return '"' + s.replace(/"/g, '""') + '"'; };
+  const rows = [['Місце', "Ім'я", 'Бали'], ...finalBoard.map(p => [p.rank, p.name, String(p.score).replace('.', ',')])];  // десяткова кома — для українського Excel
+  const csv = '﻿' + rows.map(r => r.map(cell).join(';')).join('\r\n');
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([csv], {type:'text/csv;charset=utf-8'}));
+  a.download = 'результати.csv';
+  a.click(); URL.revokeObjectURL(a.href);
+}
+
+/* ================= СТАРТ ================= */
+renderLib();
+// Якщо код уже вводили в цій вкладці — входимо автоматично (сервер усе одно перевіряє код)
+if (tCode) { intentionalClose = false; connect(tSession && tSession.pin ? resume : null); }
+</script>
+</body>
+</html>
