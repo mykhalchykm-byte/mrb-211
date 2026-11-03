@@ -1,0 +1,42 @@
+:root{
+  --bg:#46178f; --bg2:#33106b; --card:#fff; --text:#222;
+  --red:#e21b3c; --blue:#1368ce; --yellow:#d89e00; --green:#26890c;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{min-height:100%}
+body{font-family:"Segoe UI",Roboto,Arial,sans-serif;background:var(--bg);color:#fff;display:flex;flex-direction:column;min-height:100vh}
+header{padding:12px 20px;background:var(--bg2);display:flex;align-items:center;justify-content:space-between;gap:10px}
+header h1{font-size:1.4rem}
+main{flex:1;display:flex;align-items:center;justify-content:center;padding:18px}
+.screen{display:none;width:100%;max-width:1000px}
+.screen.active{display:block}
+.card{background:var(--card);color:var(--text);border-radius:12px;padding:22px;box-shadow:0 6px 0 rgba(0,0,0,.2);margin-bottom:16px}
+h2{margin-bottom:12px}
+button{font:inherit;cursor:pointer;border:none;border-radius:8px;padding:12px 20px;font-weight:700;color:#fff;background:var(--blue);box-shadow:0 4px 0 rgba(0,0,0,.25);transition:transform .08s}
+button:active{transform:translateY(3px);box-shadow:none}
+button:disabled{opacity:.5;cursor:default}
+button.green{background:var(--green)} button.red{background:var(--red)} button.gray{background:#666}
+input,select{font:inherit;padding:10px;border:2px solid #ccc;border-radius:8px;width:100%;margin:4px 0;color:#222;background:#fff}
+.row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+.center{text-align:center}
+.muted{opacity:.75}
+
+/* кольори й фігури відповідей */
+.a0{background:var(--red)} .a1{background:var(--blue)} .a2{background:var(--yellow)} .a3{background:var(--green)}
+.shape{font-size:1.8rem;line-height:1}
+
+/* таймер */
+.timer{height:12px;background:rgba(255,255,255,.25);border-radius:6px;overflow:hidden;margin:12px 0}
+.timer div{height:100%;background:#fff;width:100%}
+
+/* список лідерів */
+.podium{list-style:none}
+.podium li{background:#f4f0fb;color:#222;margin:8px 0;padding:12px 16px;border-radius:10px;display:flex;justify-content:space-between;gap:10px;font-weight:700}
+.podium li:first-child{background:#ffe27a}
+
+.chip{display:inline-flex;align-items:center;gap:8px;background:#efe9fb;color:#222;padding:6px 12px;border-radius:20px;font-weight:600}
+.chip.off{opacity:.45}
+.chip button{padding:0 6px;box-shadow:none;background:transparent;color:#b00;font-size:1rem}
+.chips{display:flex;flex-wrap:wrap;gap:8px;margin:12px 0}
+
+@media(max-width:600px){ main{padding:10px} .card{padding:16px} }
